@@ -1,0 +1,33 @@
+{
+    "zk":{
+        "zkAddr": "192.168.190.50:2181,192.168.190.51:2181,192.168.190.52:2181",
+        "basePath": "myFrame",
+        "servicePath": "myService",
+        "clientPath": "myClient"
+    },
+    "kafka":{
+        "brokers": "192.168.190.50:9092,192.168.190.51:9092,192.168.190.52:9092",
+        "topics": "test1",
+        "consumer": "my-consumer",
+        "batchNum": "30",
+        "waitSecond": "3"
+    },
+    "server": {
+        "model": "batch",
+        "connectTimeout": "10",
+        "backupLatency": "30"
+    },
+    "provider": {
+        "p1": {"host": "192.168.190.50","port": "8972"},
+        "p2": {"host": "192.168.190.51","port": "8972"},
+        "p3": {"host": "192.168.190.52","port": "8972"},
+        "p4": {"host": "192.168.190.50","port": "8973"},
+        "p5": {"host": "192.168.190.51","port": "8973"},
+        "p6": {"host": "192.168.190.52","port": "8973"}
+    },
+    "consumer": {
+        "c1": {"host": "192.168.190.50", "initStatus": "master"},
+        "c2": {"host": "192.168.190.51", "initStatus": "backup"},
+        "c3": {"host": "192.168.190.52", "initStatus": "backup"}
+    }
+}

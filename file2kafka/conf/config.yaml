@@ -1,0 +1,42 @@
+sources:
+  s1:
+    spoolDir: D:\backup\study\go\file2kafka\data
+    deletePolicy: immediate
+    recordType: sms
+    # 遵守 regexp.MustCompile 的规则
+    fileName : "^sms[[:alnum:]]+"
+    columns : "Name,Age,Sex"
+    split : ","
+    # 是否备份 yes / no
+    isbak : yes
+    bakDir : D:\backup\study\go\file2kafka\data\bak
+
+sinks:
+  k1:
+    kafka:
+      bootstrap.servers:  "node1:9092,node2:9092,node3:9092"
+      topic: sms
+      partition: 0
+      consumer.group.id: "ha"
+    skipout:
+      path: $DATA/skipfile
+      fileprefix: "SKIP_"
+      tempprefix: "%"
+      rollInterval: 3
+      batchSize: 2000
+      delim: ","
+    failout:
+      path: $DATA/failfile
+      fileprefix: "FAIL_"
+      tempprefix: "%"
+      rollInterval: 3
+      batchSize: 2000
+      delim: ","
+
+channels :
+    c1 :
+      source : s1
+      sink : k1
+
+
+
