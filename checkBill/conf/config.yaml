@@ -1,0 +1,129 @@
+common:
+  # 不同地州之间,是否并发执行 yes / no
+  regionCodeConcurrent: no
+  # 相同地州的不同通道之间,是否并发执行 yes / no
+  channelConcurrent: yes
+  # 地州稽核模式,是否稽核到用户级 yes / no
+  regionAuditUser: yes
+  # 接口表 存在的 数据库连接
+  interfaceTableDb: billdb1
+  # 稽核信息存放的 数据链连接
+  auditInfoDb: billdb1
+
+# 详单表表头配置
+cdrTable:
+  # 按地市分日表的详单表
+  prefix: DR_SMS
+  # 不按地市分日表的详单表
+  prefixNoRegion: DR_ISMP_L,DR_GPRS_II,DR_GSM_NI,DR_GSM_II,DR_ISMP_NI,DR_MMS_L,DR_WLAN_L
+  # 按地市取模分日表的详单表
+  prefixMod: DR_GSM,DR_GPRS
+
+# 数据库连接配置
+dbInfo:
+  cdrdb:
+    driver: postgres
+    connStr:
+      user: billtest
+      password: billtest
+      host: 192.168.190.92
+      port: 1921
+      dbname: boss
+      sslmode: disable
+    poolSize:
+      maxIdleConnS: 10
+      maxOpenConnS: 40
+      connMaxLifeTime: 5
+  billdb1:
+    driver: oci8
+    connStr:
+      user: AD
+      password: ZHjk_3769
+      tns: bossdevpdb_taf
+    poolSize:
+      maxIdleConnS: 10
+      maxOpenConnS: 40
+      connMaxLifeTime: 5
+  billdb2:
+    driver: oci8
+    connStr:
+      user: AD
+      password: ZHjk_3769
+      tns: bossdevpdb_taf
+    poolSize:
+      maxIdleConnS: 10
+      maxOpenConnS: 40
+      connMaxLifeTime: 5
+
+# 任务配置,下一级为地州编码
+task:
+  task01:
+    regionCode: 730
+    billDb: billdb1
+    cdrDb: cdrdb
+    taskNum: 10
+  task02:
+    regionCode: 731
+    billDb: billdb2
+    cdrDb: cdrdb
+    taskNum: 10
+  task03:
+    regionCode: 732
+    billDb: billdb1
+    cdrDb: cdrdb
+    taskNum: 10
+  task04:
+    regionCode: 733
+    billDb: billdb2
+    cdrDb: cdrdb
+    taskNum: 10
+  task05:
+    regionCode: 734
+    billDb: billdb1
+    cdrDb: cdrdb
+    taskNum: 10
+  task06:
+    regionCode: 735
+    billDb: billdb2
+    cdrDb: cdrdb
+    taskNum: 10
+  task07:
+    regionCode: 736
+    billDb: billdb1
+    cdrDb: cdrdb
+    taskNum: 10
+  task08:
+    regionCode: 737
+    billDb: billdb2
+    cdrDb: cdrdb
+    taskNum: 10
+  task09:
+    regionCode: 738
+    billDb: billdb1
+    cdrDb: cdrdb
+    taskNum: 10
+  task10:
+    regionCode: 739
+    billDb: billdb2
+    cdrDb: cdrdb
+    taskNum: 10
+  task11:
+    regionCode: 743
+    billDb: billdb1
+    cdrDb: cdrdb
+    taskNum: 10
+  task12:
+    regionCode: 744
+    billDb: billdb2
+    cdrDb: cdrdb
+    taskNum: 10
+  task13:
+    regionCode: 745
+    billDb: billdb1
+    cdrDb: cdrdb
+    taskNum: 10
+  task14:
+    regionCode: 746
+    billDb: billdb2
+    cdrDb: cdrdb
+    taskNum: 10
