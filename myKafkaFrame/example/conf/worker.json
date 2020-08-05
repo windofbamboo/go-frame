@@ -1,0 +1,15 @@
+{
+  "zk":{
+    "zkAddr": "192.168.190.50:2181,192.168.190.51:2181,192.168.190.52:2181"
+  },
+  "kafka":{
+    "brokers": "192.168.190.50:9092,192.168.190.51:9092,192.168.190.52:9092",
+    "topics": "test1",
+    "consumer": "my-consumer"
+  },
+  "worker": {
+    "workerName": "computerRectangleSquare",
+    "instanceName": "work01",
+    "host": "192.168.190.50"
+  }
+}
