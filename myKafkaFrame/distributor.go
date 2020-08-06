@@ -1,6 +1,7 @@
 package myKafkaFrame
 
 import (
+	"errors"
 	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/docker/libkv"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -23,8 +25,11 @@ type MyDistributor struct{
 	allotMsgS map[string]AllotMsgSlice
 	offsetMap map[AllotMsg]*OffsetMsg
 	partitions map[string][]int32
+	registrySign,lockStopSign,writeAllotSign,getWorkStopSign,watchStopSign,watchOffsetSign,checkOffsetSign ControlSign
 
-	totalStopCh,lockStopCh,writeStopCh,watchStopCh,watchOffsetCh,checkOffsetCh chan struct{}
+	lockName string
+	finishStatus ExecuteStatus
+	lock sync.Mutex
 }
 
 func (c *MyDistributor)getOffsetPath() string{
@@ -33,12 +38,17 @@ func (c *MyDistributor)getOffsetPath() string{
 }
 
 func (c *MyDistributor)getDistributorBasePath() string{
-	path:= zkBaseDirectory + zkPathSplit + c.workerName+ zkPathSplit + distributorDirectory
+	path:= zkBaseDirectory + zkPathSplit + c.workerName+ zkPathSplit + distributorDirectory + zkPathSplit + c.instanceName
 	return path
 }
 
-func (c *MyDistributor)getDistributorRegistryPath() string{
-	path:= zkBaseDirectory + zkPathSplit + c.workerName+ zkPathSplit + registryDirectory + zkPathSplit +distributorDirectory
+func (c *MyDistributor)getDistributorRegistryLockPath() string{
+	path:= zkBaseDirectory + zkPathSplit + c.workerName+ zkPathSplit + registryDirectory + zkPathSplit +lockDirectory
+	return path
+}
+
+func (c *MyDistributor)getInstanceRegistryPath() string{
+	path:= zkBaseDirectory + zkPathSplit + c.workerName+ zkPathSplit + registryDirectory + zkPathSplit +distributorDirectory + zkPathSplit + c.instanceName
 	return path
 }
 
@@ -73,12 +83,15 @@ func (c *MyDistributor)InitParam(configFile string,logFile string) {
 	c.offsetMap = make(map[AllotMsg]*OffsetMsg)
 	c.partitions = make(map[string][]int32)
 
-	c.totalStopCh = make(chan struct{})
-	c.lockStopCh = make(chan struct{})
-	c.writeStopCh = make(chan struct{})
-	c.watchStopCh = make(chan struct{})
-	c.watchOffsetCh = make(chan struct{})
-	c.checkOffsetCh = make(chan struct{})
+	c.registrySign.init()
+	c.lockStopSign.init()
+	c.writeAllotSign.init()
+	c.getWorkStopSign.init()
+	c.watchStopSign.init()
+	c.watchOffsetSign.init()
+	c.checkOffsetSign.init()
+
+	c.finishStatus = distributorInit
 }
 
 func (c *MyDistributor)Start() {
@@ -92,11 +105,22 @@ func (c *MyDistributor)Start() {
 	defer (*c.myStore).Close()
 
 	c.checkSignal()
-
-	c.getExecutePermission()
+	//获取执行权限
+	err=c.getExecutePermission()
+	if err != nil{
+		c.clearWorker()
+		logger.Warn(fmt.Sprintf("distributor instance : %s stoped ",c.instanceName))
+		return
+	}
+	//注册节点
+	if err:=c.registryDistributor();err!=nil{
+		logger.Error(fmt.Sprintf("registryDistributor err: %v",err))
+		panic(err)
+	}
+	//获取所有的分区
 	c.getTopics()
+	//首次分配任务
 	c.firstAllot()
-
 	// 监听offset 信息
 	c.WatchOffset()
 	// 定时检查offset
@@ -104,30 +128,61 @@ func (c *MyDistributor)Start() {
 	// 监听 worker 注册节点
 	c.watchWorker()
 
-	//等待接收停止信号
 	for {
-		select {
-		case <-c.totalStopCh:
-			logger.Warn("distributor end ... ")
-			return
+		if  c.registrySign.getStatus() == routineStop && c.lockStopSign.getStatus() == routineStop &&
+			c.getWorkStopSign.getStatus() == routineStop && c.watchStopSign.getStatus()  == routineStop &&
+			c.watchOffsetSign.getStatus() == routineStop && c.checkOffsetSign.getStatus()== routineStop &&
+			c.writeAllotSign.getStatus() == routineStop{
+			c.clearWorker()
+			logger.Warn(fmt.Sprintf("distributor instance : %s stoped ",c.instanceName))
+			break
 		}
 	}
+
 }
 
+func (c *MyDistributor) clearWorker() {
 
-func (c *MyDistributor)getExecutePermission(){
-	logger.Warn(fmt.Sprintf("%s try lock ...",c.instanceName))
-	path:= c.getDistributorRegistryPath()
-
-	if ok,err:=getQueueLock(c.myStore,path,c.workerName,c.lockStopCh);err!=nil{
-		logger.Error(fmt.Sprintf("get lock err: %v",err))
-		panic(err)
-	}else{
-		if !ok{
-			logger.Error("can not get lock ...")
+	//删除分配的信息
+	if c.finishStatus >=distributorFirstAllot {
+		for nodeName := range c.allotMsgS {
+			path:= c.getDistributorBasePath() + zkPathSplit + nodeName
+			if err:=(*c.myStore).Delete(path);err!=nil{
+				LoggerErr("delete worker instance registry node ",err)
+			}
 		}
 	}
-	logger.Warn(fmt.Sprintf("%s get lock success , start deal data ...",c.instanceName))
+
+}
+
+func (c *MyDistributor)getExecutePermission() error{
+
+	nodeName,ok,err:=getQueueLock(c.myStore,c.getDistributorRegistryLockPath(),c.workerName,&c.lockStopSign)
+	if err!=nil {
+		logger.Error(fmt.Sprintf("get lock err: %v", err))
+		return err
+	}
+	if nodeName !=""{
+		c.lockName = nodeName
+		c.finishStatus = distributorLockNode
+	}
+	if !ok{
+		return errors.New("get stop signal ")
+	}
+	return nil
+}
+
+// 注册工作进程
+func (c *MyDistributor) registryDistributor() error{
+	ip,err:=getIP()
+	LoggerErr("getIP",err)
+
+	registryInfo:=RegistryValue{InstanceName:c.instanceName,Host:ip,RegistryTime:GetCurrentTime()}
+	value,err:=msgpack.Marshal(registryInfo)
+	LoggerErr("Marshal registryInfo",err)
+
+	writeTempNodeValue(c.myStore,c.getInstanceRegistryPath(), value,&c.registrySign)
+	return nil
 }
 
 func (c *MyDistributor)getTopics(){
@@ -161,49 +216,63 @@ func (c *MyDistributor)firstAllot(){
 	logger.Warn(fmt.Sprintf("allotMsgSlice : %v",allotMsgSlice))
 	// 把分配方式写入 zk 中
 	c.writeAllotMsg(allotMsgSlice)
-	logger.Warn("writeAllotMsg finish")
+
 	c.allotMsgS = allotMsgSlice
+	c.workers = instances
+	c.finishStatus = distributorFirstAllot
 }
 
 func (c *MyDistributor)checkOffset(){
 
+	reAllot :=func(){
+		client,err:= sarama.NewClient(c.brokers,nil)
+		if err!=nil{
+			logger.Error("get kafka client err")
+			panic(err)
+		}
+		defer client.Close()
+
+		// offsetMap map[AllotMsg]OffsetMsg
+		var offsetSlice OffsetMsgSlice
+		for msg, offsetMsg := range c.offsetMap {
+			offsetNewest,err:=client.GetOffset(msg.Topic,msg.Partition,sarama.OffsetNewest)
+			if err!=nil{
+				logger.Error("get kafka offset err")
+				panic(err)
+			}
+			offsetMsg.OffsetNewest = offsetNewest
+			offsetSlice = append(offsetSlice,*offsetMsg)
+		}
+
+		isNeed,thisAllotMsgS,err:= reAllotByOffset(&offsetSlice,100,&c.allotMsgS)
+		if isNeed{
+			if c.writeAllotSign.getStatus() == routineStart{
+				c.writeAllotSign.quit <- struct{}{}
+			}
+			time.Sleep(time.Second)
+			// 写入 注册信息
+			c.writeAllotMsg(thisAllotMsgS)
+			//
+			c.allotMsgS = thisAllotMsgS
+
+			logger.Warn("checkOffset reWrite allotMsgS")
+		}
+	}
+
 	ticker := time.NewTicker(5*time.Minute)
+	c.checkOffsetSign.updateStart()
 	go func() {
 		for {
 			select {
 				case <-ticker.C:
-					client,err:= sarama.NewClient(c.brokers,nil)
-					if err!=nil{
-						logger.Error("get kafka client err")
-						panic(err)
-					}
-					defer client.Close()
-
-					// offsetMap map[AllotMsg]OffsetMsg
-					var offsetSlice OffsetMsgSlice
-					for msg, offsetMsg := range c.offsetMap {
-						offsetNewest,err:=client.GetOffset(msg.Topic,msg.Partition,sarama.OffsetNewest)
-						if err!=nil{
-							logger.Error("get kafka offset err")
-							panic(err)
-						}
-						offsetMsg.OffsetNewest = offsetNewest
-						offsetSlice = append(offsetSlice,*offsetMsg)
-					}
-
-					isNeed,thisAllotMsgS,err:= reAllotByOffset(&offsetSlice,100,&c.allotMsgS)
-					if isNeed{
-						c.writeStopCh <-struct{}{}
-						// 写入 注册信息
-						c.writeAllotMsg(thisAllotMsgS)
-						//
-						c.allotMsgS = thisAllotMsgS
-					}
-				case <-c.checkOffsetCh:
+					reAllot()
+				case <-c.checkOffsetSign.quit:
+					c.checkOffsetSign.updateStop()
 					return
 			}
 		}
 	}()
+	c.finishStatus = distributorCheckOffset
 }
 
 
@@ -222,13 +291,13 @@ func (c *MyDistributor)checkSignal(){
 		for {
 			select {
 				case <-signals:
-					c.totalStopCh <- struct{}{}
-					c.lockStopCh <- struct{}{}
-					c.writeStopCh <- struct{}{}
-					c.watchStopCh <- struct{}{}
-					c.watchOffsetCh <- struct{}{}
-					c.checkOffsetCh <- struct{}{}
-					logger.Warn("distributor signal end ... ")
+					c.registrySign.quit <- struct{}{}
+					c.lockStopSign.quit <- struct{}{}
+					c.getWorkStopSign.quit <- struct{}{}
+					c.watchStopSign.quit <- struct{}{}
+					c.watchOffsetSign.quit <- struct{}{}
+					c.checkOffsetSign.quit <- struct{}{}
+					logger.Warn("get kill signal ,will stop process ... ")
 					return
 			}
 		}
@@ -257,20 +326,19 @@ func (c *MyDistributor)WatchOffset(){
 	go func(){
 		for {
 			select {
-			case <-c.watchOffsetCh:
-				for _, signs := range signMap {
-					for _, sign := range signs {
-						sign.quit <- struct{}{}
+				case <-c.watchOffsetSign.quit:
+					for _, signs := range signMap {
+						for _, sign := range signs {
+							sign.quit <- struct{}{}
+						}
 					}
-				}
-				time.Sleep(time.Second)
-				logger.Warn("get WatchOffset quit signal ... ")
-				return
+					c.watchOffsetSign.updateStop()
+					logger.Warn("get WatchOffset quit signal ... ")
+					return
 			}
 		}
 	}()
 
-	// path: /myKafkaFrame/workerName/kafka/Offset
 	// 监听每一个 partition 的 offset, 并更新到 offsetMap 对象中
 	path:= c.getOffsetPath()
 	for topic, partitions := range c.partitions {
@@ -302,27 +370,28 @@ func (c *MyDistributor)WatchOffset(){
 								panic(err)
 							}
 							allotMsg:= AllotMsg{Topic:msg.Topic,Partition:msg.Partition}
+							c.lock.Lock()
 							c.offsetMap[allotMsg]=&msg
+							c.lock.Unlock()
 					}
 				}
 			}(key,signList[i])
 		}
 	}
-
+	c.watchOffsetSign.updateStart()
+	c.finishStatus = distributorWatchOffset
 }
 
 // 监听 worker 进程 注册信息
 // 当节点数量变化时，重新分配
 func (c *MyDistributor)watchWorker(){
-	// path: /myKafkaFrame/workerName/registry/worker/
 
 	stopWatchCh := make(chan struct{})
 	stopCheckCh := make(chan struct{})
-
 	go func() {
 		for {
 			select {
-			case <-c.watchStopCh:
+			case <-c.watchStopSign.quit:
 				stopWatchCh <- struct{}{}
 				stopCheckCh <- struct{}{}
 				return
@@ -334,25 +403,44 @@ func (c *MyDistributor)watchWorker(){
 	kvCh, err := (*c.myStore).WatchTree(path,stopWatchCh)
 	CheckErr(err)
 
+	c.watchStopSign.updateStart()
+	c.finishStatus = distributorWatchWorker
 	go func(){
 		for {
 			select {
 				case child := <-kvCh:
-					c.workers = NameSlice{}
 					for _, pair := range child {
-						nodeName := pair.Key
-						c.workers = append(c.workers,nodeName)
+						logger.Warn(pair.Key)
 					}
-					//重新分配
-					c.writeStopCh <-struct{}{}
-					res,err:=simpleAllot(&c.workers,&c.partitions)
+					kvPairs,err:= (*c.myStore).List(path)
 					CheckErr(err)
-					// 写入 注册信息
-					c.writeAllotMsg(res)
-					//
-					c.allotMsgS = res
 
+					var thisWorkers NameSlice
+					for _, pair := range kvPairs {
+						nodeName := pair.Key
+						thisWorkers = append(thisWorkers,nodeName)
+					}
+
+					if len(thisWorkers) > 0 {
+						if !thisWorkers.equal(&c.workers){
+							if c.writeAllotSign.getStatus() == routineStart{
+								c.writeAllotSign.quit <- struct{}{}
+							}
+							c.workers = thisWorkers
+							//重新分配
+							res,err:=simpleAllot(&c.workers,&c.partitions)
+							CheckErr(err)
+							time.Sleep(time.Second)
+							// 写入 注册信息
+							c.writeAllotMsg(res)
+							c.lock.Lock()
+							c.allotMsgS = res
+							c.lock.Unlock()
+							logger.Warn("watchWorker reWrite allotMsgS")
+						}
+					}
 				case <-stopCheckCh:
+					c.watchStopSign.updateStop()
 					return
 			}
 		}
@@ -363,62 +451,72 @@ func (c *MyDistributor)watchWorker(){
 // 写入worker 分配信息
 func (c *MyDistributor) writeAllotMsg(allotMap map[string] AllotMsgSlice){
 
-	var signList []*ControlSign
-	for i:=0;i< len(allotMap);i++{
+	var signList []*ControlSign // 传递信号
+	for i:=0;i<len(allotMap);i++{
 		var w ControlSign
 		w.init()
 		signList = append(signList,&w)
 	}
 
+	c.writeAllotSign.updateStart()
 	go func(){
 		for {
 			select {
-			case <-c.writeStopCh:
-				for _, sign := range signList {
-					sign.quit <- struct{}{}
-				}
-				time.Sleep(time.Second)
-				logger.Warn("writeAllotMsg end ... ")
-				return
+				case <-c.writeAllotSign.quit:
+					for _, sign := range signList {
+						sign.quit <- struct{}{}
+					}
+					c.writeAllotSign.updateStop()
+					return
 			}
 		}
 	}()
 
-	//  path /myKafkaFrame/workerName/distributor/{work-instance}
 	var index = 0
 	for nodeName, slice := range allotMap {
-		logger.Error(fmt.Sprintf("nodeName : %v",nodeName))
-
 		path:= c.getDistributorBasePath() + zkPathSplit + nodeName
 		value,err:= msgpack.Marshal(slice)
 		CheckErr(err)
-
-		writeNodeValue(c.myStore,path, value,signList[index].quit)
+		writeTempNodeValue(c.myStore,path,value,signList[index])
+		logger.Warn(fmt.Sprintf("writeAllotMsg nodeName: %v ,slice: %v",nodeName, slice))
 		index++
 	}
 }
 
 // 获取 worker 进程 注册信息
 func (c *MyDistributor)getWorkers() (NameSlice,error){
-	// path: /myKafkaFrame/workerName/registry/worker/
 	path:= c.getWorkerRegistryPath()
-	kvS, err:= (*c.myStore).List(path)
-	if err!=nil{
-		logger.Error(fmt.Sprintf("get list err: %v",err))
-		return nil,err
-	}
 
-	var instanceNames NameSlice
-	for _, kv := range kvS {
-		nodeName:=kv.Key
-		var msg RegistryValue
-		if err:=msgpack.Unmarshal(kv.Value,&msg);err!=nil{
-			return nil,err
+	c.getWorkStopSign.updateStart()
+	ticker := time.NewTicker(3*time.Second)
+	for {
+		select {
+			case <-ticker.C:
+				kvS, err:= (*c.myStore).List(path)
+				if err!=nil{
+					logger.Error(fmt.Sprintf("get list err: %v",err))
+					c.getWorkStopSign.updateStop()
+					return nil,err
+				}
+				if len(kvS) > 0{
+					var instanceNames NameSlice
+					for _, kv := range kvS {
+						nodeName:=kv.Key
+						var msg RegistryValue
+						if err:=msgpack.Unmarshal(kv.Value,&msg);err!=nil{
+							return nil,err
+						}
+						instanceNames= append(instanceNames,nodeName)
+					}
+					c.getWorkStopSign.updateStop()
+					return instanceNames,nil
+				}
+			case <-c.getWorkStopSign.quit:
+				c.getWorkStopSign.updateStop()
+				return nil,errors.New("get signal stop")
 		}
-		instanceNames= append(instanceNames,nodeName)
 	}
 
-	return instanceNames,nil
 }
 
 

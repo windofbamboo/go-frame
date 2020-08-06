@@ -1,6 +1,7 @@
 package myKafkaFrame
 
 import (
+	"errors"
 	"fmt"
 	"github.com/docker/libkv/store"
 	"github.com/wonderivan/logger"
@@ -13,7 +14,6 @@ import (
 func simpleAllot ( workers *NameSlice, topics *map[string] []int32) (map[string] AllotMsgSlice,error){
 
 	sort.Sort(workers)
-
 	var total AllotMsgSlice
 	for topic, partitions := range *topics {
 		for _, partition := range partitions {
@@ -27,13 +27,12 @@ func simpleAllot ( workers *NameSlice, topics *map[string] []int32) (map[string]
 		j:=i%workerNum
 		name:= (*workers)[j]
 
-		if msgs,ok:= res[name];ok{
-			msgs = append(msgs,msg)
+		if _,ok:= res[name];ok{
+			res[name] = append(res[name],msg)
 		}else{
 			res[name] = AllotMsgSlice{msg}
 		}
 	}
-
 	return res,nil
 }
 
@@ -109,22 +108,23 @@ func createNode(myStore *store.Store,node string) error{
 	}
 }
 
-func getQueueLock(myStore *store.Store,lockPath string, lockName string,lockStopCh <-chan struct{}) (bool,error){
+func getQueueLock(myStore *store.Store,lockPath string, lockName string,controlSign *ControlSign) (string,bool,error){
 
 	if err:=createNode(myStore,lockPath);err!=nil{
-		return false,err
+		return "",false,errors.New("create lockPath err : "+ err.Error())
 	}
 	mySequence:=GetCurrentTime()
-	tempPath:=lockPath+"/"+lockName+mySequence
+	tempPath:=lockPath+zkPathSplit+lockName+mySequence
 
 	if err:=(*myStore).Put(tempPath, []byte(lockName), &store.WriteOptions{TTL: 2*tickerTime});err!=nil{
-		return false,err
+		return "",false,errors.New("create lockNode err : "+ err.Error())
 	}
 
 	stopWatchCh := make(chan struct{})
 	stopCheckCh := make(chan struct{})
 
 	ticker := time.NewTicker(tickerTime)
+	controlSign.updateStart()
 	go func() {
 		for {
 			select {
@@ -133,9 +133,10 @@ func getQueueLock(myStore *store.Store,lockPath string, lockName string,lockStop
 					if err != nil {
 						logger.Warn(fmt.Printf("set node value err: %v",err))
 					}
-				case <-lockStopCh:
+				case <-controlSign.quit:
 					stopWatchCh <- struct{}{}
 					stopCheckCh <- struct{}{}
+					controlSign.updateStop()
 					return
 			}
 		}
@@ -143,7 +144,7 @@ func getQueueLock(myStore *store.Store,lockPath string, lockName string,lockStop
 
 	kvCh, err := (*myStore).WatchTree(lockPath,stopWatchCh)
 	if err != nil {
-		return false,err
+		return lockName+mySequence,false,errors.New("WatchTree lockPath err : "+ err.Error())
 	}
 
 	for {
@@ -157,31 +158,36 @@ func getQueueLock(myStore *store.Store,lockPath string, lockName string,lockStop
 					}
 				}
 				if mySequence == minSequence{
-					return true,nil
+					controlSign.updateStop()
+					return lockName+mySequence,true,nil
 				}
 			case <-stopCheckCh:
-				return false,nil
+				controlSign.updateStop()
+				return lockName+mySequence,false,nil
 		}
 	}
 }
 
 
-func writeNodeValue(myStore *store.Store,node string,value []byte,quit chan struct{}) {
+func writeTempNodeValue(myStore *store.Store,node string,value []byte,controlSign *ControlSign) {
 
 	if err:=(*myStore).Put(node, value, &store.WriteOptions{TTL: 2*tickerTime});err!=nil{
 		CheckErr(err)
 	}
 	ticker := time.NewTicker(tickerTime)
+	controlSign.updateStart()
 	go func() {
 		for {
 			select {
-			case <-ticker.C:
-				err:=(*myStore).Put(node, value, &store.WriteOptions{TTL: 2*tickerTime})
-				if err != nil {
-					logger.Error(fmt.Sprintf("set node value err: %v",err))
-				}
-			case <-quit:
-				return
+				case <-ticker.C:
+					err:=(*myStore).Put(node, value, &store.WriteOptions{TTL: 2*tickerTime})
+					if err != nil {
+						logger.Error(fmt.Sprintf("set node value err: %v",err))
+					}
+				case <-controlSign.quit:
+					controlSign.updateStop()
+					logger.Warn("controlSign.updateStop() ... ")
+					return
 			}
 		}
 	}()

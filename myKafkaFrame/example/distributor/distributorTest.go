@@ -28,21 +28,26 @@ func main() {
 
 var help = func() {
 	fmt.Println("====================================================")
-	fmt.Println("command :   -f [configFile] ")
+	fmt.Println("command :   -c [configFile] -l [logFile]")
 	fmt.Println("example : ")
-	fmt.Println("             distributor -f distributor.json ")
+	fmt.Println("             distributor -c distributor.json -l myLog.json")
 	fmt.Println("====================================================")
 }
 
 func flagInit() (string,string) {
 
 	exPath := os.Getenv("CONFIG_PATH")
-	logFile := filepath.Join(exPath, DefaultConfigPath, LogConfigFileName)
-	localFile := filepath.Join(exPath, DefaultConfigPath, DefaultConfigFileName)
+	defaultLogFile := filepath.Join(exPath, DefaultConfigPath, LogConfigFileName)
+	defaultConfigFile := filepath.Join(exPath, DefaultConfigPath, DefaultConfigFileName)
+
+	//defaultLogFile = "D:\\backup\\study\\go\\myKafkaFrame\\example\\conf\\myLog.json"
+	//defaultConfigFile = "D:\\backup\\study\\go\\myKafkaFrame\\example\\conf\\distributor.json"
 
 	var configFile string
+	var logFile string
 
-	flag.StringVar(&configFile, "f", localFile, "configFile for read")
+	flag.StringVar(&configFile, "c", defaultConfigFile, "configFile for read")
+	flag.StringVar(&logFile, "l", defaultLogFile, "logFile for read")
 	flag.Parse()
 
 	return configFile,logFile

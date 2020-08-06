@@ -1,6 +1,10 @@
 package myKafkaFrame
 
-import "time"
+import (
+	"sort"
+	"sync"
+	"time"
+)
 
 type NameSlice []string
 
@@ -12,6 +16,19 @@ func (s NameSlice)Swap(i, j int){
 }
 func (s NameSlice)Less(i, j int) bool{
 	return s[i] < s[j]
+}
+func (s *NameSlice)equal(o *NameSlice) bool{
+	if s.Len() != o.Len(){
+		return false
+	}
+	sort.Sort(s)
+	sort.Sort(o)
+	for i:=0;i<s.Len();i++{
+		if (*s)[i] != (*o)[i]{
+			return false
+		}
+	}
+	return true
 }
 
 type AllotMsg struct{
@@ -33,6 +50,23 @@ func (s AllotMsgSlice)Less(i, j int) bool{
 	}
 	return s[i].Partition < s[j].Partition
 }
+func (c *AllotMsgSlice)equal(o *AllotMsgSlice) bool{
+	if c.Len() != o.Len(){
+		return false
+	}
+	sort.Sort(c)
+	sort.Sort(o)
+	for i:=0;i<c.Len();i++{
+		if (*c)[i].Topic != (*o)[i].Topic{
+			return false
+		}
+		if (*c)[i].Partition != (*o)[i].Partition{
+			return false
+		}
+	}
+	return true
+}
+
 
 type OffsetMsg struct {
 	AllotMsg
@@ -59,14 +93,7 @@ type RegistryValue struct {
 	RegistryTime string
 }
 
-type ControlSign struct{
-	quit chan struct{}
-}
-func (o *ControlSign)init(){
-	o.quit = make(chan struct{})
-}
-
-var (
+const (
 	InstanceTypeDistributor string = "distributor"
 	InstanceTypeWorker string = "worker"
 	tickerTime = 30 * time.Second
@@ -75,10 +102,54 @@ var (
 	registryDirectory = "registry"
 	distributorDirectory = "distributor"
 	workerDirectory = "worker"
+	lockDirectory = "lock"
 	queueDirectory = "kafka"
 	offsetDirectory = "offset"
 
 	zkPathSplit = "/"
-
 )
 
+type ExecuteStatus int32
+const (
+	routineInit 	ExecuteStatus = -1
+	routineStart 	ExecuteStatus = 0
+	routineStop 	ExecuteStatus = 1
+
+	workStatusInit		ExecuteStatus = -1
+	workStatusGetTask	ExecuteStatus = 0
+	workStatusStartTask	ExecuteStatus = 1
+	workStatusLostWatch	ExecuteStatus = 2
+
+	distributorInit			ExecuteStatus = -1
+	distributorLockNode		ExecuteStatus = 1
+	distributorFirstAllot	ExecuteStatus = 2
+	distributorWatchOffset	ExecuteStatus = 3
+	distributorCheckOffset	ExecuteStatus = 4
+	distributorWatchWorker	ExecuteStatus = 5
+)
+
+type ControlSign struct{
+	quit chan struct{}
+	status ExecuteStatus
+	rwLock sync.RWMutex
+}
+func (o *ControlSign)init(){
+	o.quit = make(chan struct{},1)
+	o.status = routineInit
+}
+func (o *ControlSign)updateStart(){
+	o.rwLock.Lock()
+	o.status = routineStart
+	o.rwLock.Unlock()
+}
+func (o *ControlSign)updateStop(){
+	o.rwLock.Lock()
+	o.status = routineStop
+	o.rwLock.Unlock()
+}
+func (o *ControlSign)getStatus() ExecuteStatus{
+	o.rwLock.RLock()
+	a:= o.status
+	o.rwLock.RUnlock()
+	return a
+}
