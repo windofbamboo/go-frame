@@ -123,9 +123,11 @@ func getQueueLock(myStore *store.Store,lockPath string, lockName string,controlS
 	stopWatchCh := make(chan struct{})
 	stopCheckCh := make(chan struct{})
 
-	ticker := time.NewTicker(tickerTime)
-	controlSign.updateStart()
 	go func() {
+		ticker := time.NewTicker(tickerTime)
+		defer ticker.Stop()
+		controlSign.updateStart()
+
 		for {
 			select {
 				case <-ticker.C:
@@ -174,9 +176,12 @@ func writeTempNodeValue(myStore *store.Store,node string,value []byte,controlSig
 	if err:=(*myStore).Put(node, value, &store.WriteOptions{TTL: 2*tickerTime});err!=nil{
 		CheckErr(err)
 	}
-	ticker := time.NewTicker(tickerTime)
-	controlSign.updateStart()
+
 	go func() {
+		ticker := time.NewTicker(tickerTime)
+		defer ticker.Stop()
+
+		controlSign.updateStart()
 		for {
 			select {
 				case <-ticker.C:

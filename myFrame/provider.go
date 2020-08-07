@@ -21,14 +21,15 @@ type MyProvider struct {
 }
 
 type DealFunc func(in *[]byte, out *[]byte) error
+
 var dealFunc DealFunc
 
-func (m *MyProvider)InitParam(instanceName string,configFile string,logFile string) {
+func (m *MyProvider) InitParam(instanceName string, configFile string, logFile string) {
 
 	err := CheckFile(logFile)
 	CheckErr(err)
 
-	contentStr,err:=ReSetLogFileName(logFile,instanceName)
+	contentStr, err := ReSetLogFileName(logFile, instanceName)
 	CheckErr(err)
 
 	err = logger.SetLogger(contentStr)
@@ -40,7 +41,7 @@ func (m *MyProvider)InitParam(instanceName string,configFile string,logFile stri
 	err = ReadConfig(configFile)
 	CheckErr(err)
 
-	err = CheckInstance(InstanceTypeProvider,instanceName)
+	err = CheckInstance(InstanceTypeProvider, instanceName)
 	CheckErr(err)
 
 	m.zkAddr = configContent.zk.zkAddr
@@ -48,39 +49,39 @@ func (m *MyProvider)InitParam(instanceName string,configFile string,logFile stri
 
 	var addrStr string
 	for _, s := range configContent.provider {
-		if s.name == instanceName{
-			addrStr = fmt.Sprintf("%s:%d",s.host,s.port)
+		if s.name == instanceName {
+			addrStr = fmt.Sprintf("%s:%d", s.host, s.port)
 			break
 		}
 	}
 	m.addr = flag.String("addr", addrStr, "server address")
 }
 
-func (p *MyProvider)RegistryDealFunc(fn DealFunc){
+func (p *MyProvider) RegistryDealFunc(fn DealFunc) {
 	dealFunc = fn
 }
 
-func (p *MyProvider)Start() {
+func (p *MyProvider) Start() {
 
 	s := server.NewServer()
 
 	//获取kill信号
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals,
-					syscall.SIGHUP,
-					syscall.SIGINT,
-					syscall.SIGTERM,
-					syscall.SIGQUIT,
-					os.Interrupt,
-					os.Kill)
-	go func(){
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+		os.Interrupt,
+		os.Kill)
+	go func() {
 		for {
 			select {
 			case <-signals:
-				if err:=s.Close();err!=nil{
-					logger.Error(fmt.Sprintf("close server err : %v",err))
+				if err := s.Close(); err != nil {
+					logger.Error(fmt.Sprintf("close server err : %v", err))
 					panic(err)
-				}else{
+				} else {
 					logger.Warn("close server ... ")
 				}
 				return
@@ -89,12 +90,12 @@ func (p *MyProvider)Start() {
 	}()
 
 	p.addRegistryPlugin(s)
-	if err:=s.RegisterFunction(ServicePath, singleDeal, "");err!=nil{
-		logger.Error(fmt.Sprintf("Register function singleDeal err : %v",err))
+	if err := s.RegisterFunction(ServicePath, singleDeal, ""); err != nil {
+		logger.Error(fmt.Sprintf("Register function singleDeal err : %v", err))
 		panic(err)
 	}
-	if err:=s.RegisterFunction(ServicePath, batchDeal, "");err!=nil{
-		logger.Error( fmt.Sprintf("Register function batchDeal err : %v",err))
+	if err := s.RegisterFunction(ServicePath, batchDeal, ""); err != nil {
+		logger.Error(fmt.Sprintf("Register function batchDeal err : %v", err))
 		panic(err)
 	}
 
@@ -102,8 +103,8 @@ func (p *MyProvider)Start() {
 	//s.Plugins.Add(metricsPlugin)
 	//p.startMetrics()
 
-	if err:=s.Serve("tcp", *p.addr);err!=nil{
-		logger.Error( fmt.Sprintf("start server err : %v",err))
+	if err := s.Serve("tcp", *p.addr); err != nil {
+		logger.Error(fmt.Sprintf("start server err : %v", err))
 	}
 }
 
@@ -116,7 +117,7 @@ func (p *MyProvider)Start() {
 //	go myGraphite.Graphite(myMetrics.DefaultRegistry, 1e9, "rpcx.services.host.127_0_0_1", addr)
 //}
 
-func (p *MyProvider)addRegistryPlugin(s *server.Server) {
+func (p *MyProvider) addRegistryPlugin(s *server.Server) {
 
 	r := &serverplugin.ZooKeeperRegisterPlugin{
 		ServiceAddress:   "tcp@" + *p.addr,
@@ -137,12 +138,12 @@ func singleDeal(ctx context.Context, inPut *Message, outPut *Message) error {
 
 	data := inPut.Value
 	var res []byte
-	if err:=dealFunc(&data,&res);err!=nil{
+	if err := dealFunc(&data, &res); err != nil {
 		logger.Warn(fmt.Sprintf("topic: %s ,partition: %d ,offset: %d ,key: %s ,value: %s ,deal err: %v ",
-			inPut.Topic, inPut.Partition, inPut.Offset, inPut.Key, inPut.Value,err))
+			inPut.Topic, inPut.Partition, inPut.Offset, inPut.Key, inPut.Value, err))
 		inPut.DealTag = false
 		return err
-	}else{
+	} else {
 		inPut.DealTag = true
 		inPut.Result = res
 	}
@@ -156,15 +157,15 @@ func batchDeal(ctx context.Context, inPut *[]Message, outPut *[]Message) error {
 		msg := (*inPut)[i]
 		data := msg.Value
 		var res []byte
-		if err:=dealFunc(&data,&res);err!=nil{
+		if err := dealFunc(&data, &res); err != nil {
 			logger.Warn(fmt.Sprintf("topic: %s ,partition: %d ,offset: %d ,key: %s ,value: %s ,deal err: %v ",
-				msg.Topic, msg.Partition, msg.Offset, msg.Key, msg.Value,err))
+				msg.Topic, msg.Partition, msg.Offset, msg.Key, msg.Value, err))
 			msg.DealTag = false
-		}else{
+		} else {
 			msg.DealTag = true
 			msg.Result = res
 		}
-		*outPut = append(*outPut,msg)
+		*outPut = append(*outPut, msg)
 	}
 	return nil
 }

@@ -142,6 +142,15 @@ func (c *MyDistributor)Start() {
 }
 
 func (c *MyDistributor) clearWorker() {
+
+	close(c.registrySign.quit)
+	close(c.lockStopSign.quit)
+	close(c.getWorkStopSign.quit)
+	close(c.watchStopSign.quit)
+	close(c.watchOffsetSign.quit)
+	close(c.checkOffsetSign.quit)
+	close(c.writeAllotSign.quit)
+
 	//删除分配的信息
 	if c.finishStatus.getStatus() >=distributorFirstAllot {
 		for nodeName := range c.allotMsgS {
@@ -254,9 +263,11 @@ func (c *MyDistributor)checkOffset(){
 		}
 	}
 
-	ticker := time.NewTicker(5*time.Minute)
-	c.checkOffsetSign.updateStart()
 	go func() {
+		ticker := time.NewTicker(5*time.Minute)
+		defer ticker.Stop()
+
+		c.checkOffsetSign.updateStart()
 		for {
 			select {
 				case <-ticker.C:
@@ -301,48 +312,24 @@ func (c *MyDistributor)checkSignal(){
 }
 
 
-
 // 监听 topic 的 offset 信息
 func (c *MyDistributor)WatchOffset(){
-
 	//初始化 信号
-	var signMap = make(map[string][]*ControlSign)
-	for topicName, partitions := range c.partitions {
-		var signList []*ControlSign
-		for range partitions {
-			var w ControlSign
-			w.init()
-			signList = append(signList,&w)
-		}
-		signMap[topicName] = signList
+	var size = 0
+	for _, partitions := range c.partitions {
+		size += len(partitions)
 	}
-
-	// 信号传递
-	go func(){
-		for {
-			select {
-				case <-c.watchOffsetSign.quit:
-					for _, signs := range signMap {
-						for _, sign := range signs {
-							sign.quit <- struct{}{}
-						}
-					}
-					c.watchOffsetSign.updateStop()
-					logger.Warn("get WatchOffset quit signal ... ")
-					return
-			}
-		}
-	}()
+	signList := c.watchOffsetSign.signalMultiplication(size*2)
 
 	// 监听每一个 partition 的 offset, 并更新到 offsetMap 对象中
+	// todo
 	path:= c.getOffsetPath()
+	var index = 0
 	for topic, partitions := range c.partitions {
-		signList := signMap[topic]
-
-		for i, partition := range partitions {
+		for _, partition := range partitions {
 			key:= path + zkPathSplit + topic+ strconv.FormatInt(int64(partition),10)
 
-			go func(key string,sign *ControlSign){
+			go func(key string,watchSign *ControlSign,checkSign *ControlSign){
 				for{
 					if ok,err:=(*c.myStore).Exists(key);err!=nil{
 						logger.Warn(fmt.Sprintf("check node err : %v ",err))
@@ -353,7 +340,7 @@ func (c *MyDistributor)WatchOffset(){
 						time.Sleep(time.Second)
 					}
 				}
-				kvCh, err := (*c.myStore).Watch(key,sign.quit)
+				kvCh, err := (*c.myStore).Watch(key,watchSign.quit)
 				if err!=nil {
 					panic(err)
 				}
@@ -368,12 +355,14 @@ func (c *MyDistributor)WatchOffset(){
 							c.lock.Lock()
 							c.offsetMap[allotMsg]=&msg
 							c.lock.Unlock()
+						case <- checkSign.quit:
+							return
 					}
 				}
-			}(key,signList[i])
+			}(key,signList[index*2],signList[index*2+1])
+			index++
 		}
 	}
-	c.watchOffsetSign.updateStart()
 	c.finishStatus.updateStatus(distributorWatchOffset)
 }
 
@@ -381,26 +370,15 @@ func (c *MyDistributor)WatchOffset(){
 // 当节点数量变化时，重新分配
 func (c *MyDistributor)watchWorker(){
 
-	stopWatchCh := make(chan struct{})
-	stopCheckCh := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-c.watchStopSign.quit:
-				stopWatchCh <- struct{}{}
-				stopCheckCh <- struct{}{}
-				return
-			}
-		}
-	}()
+	signList := c.watchStopSign.signalMultiplication(2)
 
 	path:= c.getWorkerRegistryPath()
-	kvCh, err := (*c.myStore).WatchTree(path,stopWatchCh)
+	kvCh, err := (*c.myStore).WatchTree(path,signList[0].quit)
 	CheckErr(err)
 
-	c.watchStopSign.updateStart()
-	c.finishStatus.updateStatus(distributorWatchWorker)
 	go func(){
+		c.watchStopSign.updateStart()
+		c.finishStatus.updateStatus(distributorWatchWorker)
 		for {
 			select {
 				case child := <-kvCh:
@@ -432,7 +410,7 @@ func (c *MyDistributor)watchWorker(){
 							logger.Warn("watchWorker reWrite allotMsgS")
 						}
 					}
-				case <-stopCheckCh:
+				case <-signList[1].quit:
 					c.watchStopSign.updateStop()
 					return
 			}
@@ -444,26 +422,7 @@ func (c *MyDistributor)watchWorker(){
 // 写入worker 分配信息
 func (c *MyDistributor) writeAllotMsg(allotMap map[string] AllotMsgSlice){
 
-	var signList []*ControlSign // 传递信号
-	for i:=0;i<len(allotMap);i++{
-		var w ControlSign
-		w.init()
-		signList = append(signList,&w)
-	}
-
-	c.writeAllotSign.updateStart()
-	go func(){
-		for {
-			select {
-				case <-c.writeAllotSign.quit:
-					for _, sign := range signList {
-						sign.quit <- struct{}{}
-					}
-					c.writeAllotSign.updateStop()
-					return
-			}
-		}
-	}()
+	signList:=c.writeAllotSign.signalMultiplication(len(allotMap))
 
 	var index = 0
 	for nodeName, slice := range allotMap {
@@ -482,6 +441,7 @@ func (c *MyDistributor)getWorkers() (NameSlice,error){
 
 	c.getWorkStopSign.updateStart()
 	ticker := time.NewTicker(3*time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 			case <-ticker.C:

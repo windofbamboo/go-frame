@@ -1,10 +1,14 @@
 package myKafkaFrame
 
 import (
+	"github.com/Shopify/sarama"
 	"sort"
 	"sync"
 	"time"
 )
+
+
+type DealFunc func(in *sarama.ConsumerMessage) error
 
 type NameSlice []string
 
@@ -138,19 +142,18 @@ func (o *ControlSign)init(){
 }
 func (o *ControlSign)updateStart(){
 	o.rwLock.Lock()
+	defer o.rwLock.Unlock()
 	o.status = routineStart
-	o.rwLock.Unlock()
 }
 func (o *ControlSign)updateStop(){
 	o.rwLock.Lock()
+	defer o.rwLock.Unlock()
 	o.status = routineStop
-	o.rwLock.Unlock()
 }
 func (o *ControlSign)getStatus() ExecuteStatus{
 	o.rwLock.RLock()
-	a:= o.status
-	o.rwLock.RUnlock()
-	return a
+	defer o.rwLock.RUnlock()
+	return o.status
 }
 func (o *ControlSign)waitIdle() {
 	for{
@@ -162,15 +165,41 @@ func (o *ControlSign)waitIdle() {
 }
 func (o *ControlSign)setStopSign() {
 	o.rwLock.Lock()
+	defer o.rwLock.Unlock()
 	o.quit <- struct{}{}
-	o.rwLock.Unlock()
 }
 func (o *ControlSign)start2Stop() {
 	o.rwLock.Lock()
+	defer o.rwLock.Unlock()
 	if o.status == routineStart{
 		o.quit <- struct{}{}
 	}
-	o.rwLock.Unlock()
+}
+
+func (o *ControlSign)signalMultiplication(size int) []*ControlSign{
+
+	var signList []*ControlSign // 传递信号
+	for i:=0;i<size;i++{
+		var w ControlSign
+		w.init()
+		signList = append(signList,&w)
+	}
+
+	go func(){
+		o.updateStart()
+		for {
+			select {
+				case <-o.quit:
+					for _, sign := range signList {
+						sign.quit <- struct{}{}
+					}
+					o.updateStop()
+					return
+			}
+		}
+	}()
+
+	return signList
 }
 
 type ConStatus struct{
@@ -179,12 +208,11 @@ type ConStatus struct{
 }
 func (o *ConStatus)updateStatus(value ExecuteStatus){
 	o.rwLock.Lock()
+	defer o.rwLock.Unlock()
 	o.status = value
-	o.rwLock.Unlock()
 }
 func (o *ConStatus)getStatus() ExecuteStatus{
 	o.rwLock.RLock()
-	a:= o.status
-	o.rwLock.RUnlock()
-	return a
+	defer o.rwLock.RUnlock()
+	return o.status
 }

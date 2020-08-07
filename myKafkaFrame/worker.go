@@ -16,7 +16,6 @@ import (
 	"time"
 )
 
-type DealFunc func(in *sarama.ConsumerMessage) error
 
 type MyWorker struct {
 	brokers,zkAddr   NameSlice
@@ -113,6 +112,12 @@ func (p *MyWorker)Start() {
 	for {
 		 if p.timeTickerSign.getStatus() == routineStop && p.registrySign.getStatus()== routineStop &&
 			p.distributorSign.getStatus()== routineStop && p.processSign.getStatus() == routineStop{
+
+			 close(p.timeTickerSign.quit)
+			 close(p.registrySign.quit)
+			 close(p.distributorSign.quit)
+			 close(p.processSign.quit)
+
 			 logger.Warn(fmt.Sprintf("worker instance : %s stoped ",p.instanceName))
 			break
 		}
@@ -172,7 +177,9 @@ func (p *MyWorker) watchDistributorInfo() {
 
 	//等待 分配器注册信息
 	path:=p.getDistributorRegistryPath()
+
 	ticker:= time.NewTicker(3*time.Second)
+	defer ticker.Stop()
 	p.distributorSign.updateStart()
 	for {
 		select {
@@ -208,6 +215,7 @@ func (p *MyWorker) watchDistributorInfo() {
 	//等待分配结果
 	path= p.getDistributorPath()
 	ticker = time.NewTicker(3*time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
@@ -246,6 +254,7 @@ func (p *MyWorker) watchDistributorInfo() {
 	LoggerErr("watch distributor info",err)
 
 	go func(){
+		defer close(stopCheckCh)
 		for {
 			select {
 				case pair := <-kvCh:
@@ -282,54 +291,35 @@ func (p *MyWorker) watchDistributorInfo() {
 func (p *MyWorker)process() {
 
 	logger.Warn("process begin ... ")
+	signList:=p.processSign.signalMultiplication(p.allotMsgS.Len()+1)
+	timeQuit:=signList[p.allotMsgS.Len()]
 
 	var offsetList []*OffsetMsg // 传递偏移量
-	var signList []*ControlSign // 传递信号
-	timeQuit:=make(chan struct{},1)
 	for i:=0;i<p.allotMsgS.Len();i++{
-		var w ControlSign
-		w.init()
-		signList = append(signList,&w)
-
 		offsetMsg:=OffsetMsg{OffsetCommit:0}
 		offsetList = append(offsetList,&offsetMsg)
 	}
-	// 外部信号 传递到内部
-	p.processSign.updateStart()
-	go func(){
-		for {
-			select {
-			case <-p.processSign.quit:
-				for _, sign := range signList {
-					sign.quit <- struct{}{}
-				}
-				timeQuit <- struct{}{}
-				p.processSign.updateStop()
-				logger.Warn("processSign.updateStop() ... ")
-				return
+	//定时同步 偏移量
+	go func() {
+		defer close(timeQuit.quit)
+
+		writeOffset := func(){
+			for _, msg := range offsetList {
+				key:=p.getOffsetPath()+zkPathSplit+msg.Topic+ strconv.FormatInt(int64(msg.Partition),10)
+				value,err:=msgpack.Marshal(*msg)
+				LoggerErr("Marshal offsetMsg",err)
+				err=(*p.myStore).Put(key, value, nil)
+				LoggerErr("write offset",err)
 			}
 		}
-	}()
 
-	var writeOffset = func(){
-		for _, msg := range offsetList {
-			key:=p.getOffsetPath()+zkPathSplit+msg.Topic+ strconv.FormatInt(int64(msg.Partition),10)
-
-			value,err:=msgpack.Marshal(*msg)
-			LoggerErr("Marshal offsetMsg",err)
-
-			err=(*p.myStore).Put(key, value, nil)
-			LoggerErr("write offset",err)
-		}
-	}
-	//定时同步 偏移量
-	ticker := time.NewTicker(3*time.Second)
-	go func() {
+		ticker := time.NewTicker(3*time.Second)
+		defer ticker.Stop()
 		for {
 			select {
 				case <-ticker.C:
 					writeOffset()
-				case <-timeQuit:
+				case <-timeQuit.quit:
 					writeOffset()
 					logger.Warn("stop writeOffset ... ")
 					return
@@ -339,6 +329,7 @@ func (p *MyWorker)process() {
 
 	// init consumer
 	config:= sarama.NewConfig()
+	config.Version = sarama.V2_1_0_0
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 
 	consumer, err := sarama.NewConsumer(p.brokers, config)
@@ -354,6 +345,7 @@ func (p *MyWorker)process() {
 			LoggerErr("get ConsumePartition",err)
 			defer pc.AsyncClose()
 
+			defer close(signList[index].quit)
 			for {
 				select {
 					case part, ok := <-pc.Messages():
@@ -373,6 +365,7 @@ func (p *MyWorker)process() {
 							offsetList[index].OffsetCommit 	= part.Offset
 							offsetList[index].OffsetNewest 	= -1
 						}
+
 					case <- signList[index].quit:
 						logger.Warn(fmt.Sprintf("stop deal data [topic : %v , partition : %v ]",topic,partition))
 						return
@@ -398,9 +391,12 @@ func (p *MyWorker)LoopProcess(){
 	p.processLock.Unlock()
 
 	//定时检测分配的任务是否有变动
-	ticker := time.NewTicker(6*time.Second)
-	p.timeTickerSign.updateStart()
+
 	go func(){
+		ticker := time.NewTicker(6*time.Second)
+		defer ticker.Stop()
+
+		p.timeTickerSign.updateStart()
 		for {
 			select {
 				case <-ticker.C:
