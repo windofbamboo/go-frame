@@ -28,7 +28,7 @@ type MyDistributor struct{
 	registrySign,lockStopSign,writeAllotSign,getWorkStopSign,watchStopSign,watchOffsetSign,checkOffsetSign ControlSign
 
 	lockName string
-	finishStatus ExecuteStatus
+	finishStatus ConStatus
 	lock sync.Mutex
 }
 
@@ -91,7 +91,7 @@ func (c *MyDistributor)InitParam(configFile string,logFile string) {
 	c.watchOffsetSign.init()
 	c.checkOffsetSign.init()
 
-	c.finishStatus = distributorInit
+	c.finishStatus.updateStatus(distributorInit)
 }
 
 func (c *MyDistributor)Start() {
@@ -142,9 +142,8 @@ func (c *MyDistributor)Start() {
 }
 
 func (c *MyDistributor) clearWorker() {
-
 	//删除分配的信息
-	if c.finishStatus >=distributorFirstAllot {
+	if c.finishStatus.getStatus() >=distributorFirstAllot {
 		for nodeName := range c.allotMsgS {
 			path:= c.getDistributorBasePath() + zkPathSplit + nodeName
 			if err:=(*c.myStore).Delete(path);err!=nil{
@@ -152,7 +151,6 @@ func (c *MyDistributor) clearWorker() {
 			}
 		}
 	}
-
 }
 
 func (c *MyDistributor)getExecutePermission() error{
@@ -164,7 +162,7 @@ func (c *MyDistributor)getExecutePermission() error{
 	}
 	if nodeName !=""{
 		c.lockName = nodeName
-		c.finishStatus = distributorLockNode
+		c.finishStatus.updateStatus(distributorLockNode)
 	}
 	if !ok{
 		return errors.New("get stop signal ")
@@ -219,7 +217,7 @@ func (c *MyDistributor)firstAllot(){
 
 	c.allotMsgS = allotMsgSlice
 	c.workers = instances
-	c.finishStatus = distributorFirstAllot
+	c.finishStatus.updateStatus(distributorFirstAllot)
 }
 
 func (c *MyDistributor)checkOffset(){
@@ -246,13 +244,10 @@ func (c *MyDistributor)checkOffset(){
 
 		isNeed,thisAllotMsgS,err:= reAllotByOffset(&offsetSlice,100,&c.allotMsgS)
 		if isNeed{
-			if c.writeAllotSign.getStatus() == routineStart{
-				c.writeAllotSign.quit <- struct{}{}
-			}
-			time.Sleep(time.Second)
+			c.writeAllotSign.start2Stop()
+			c.writeAllotSign.waitIdle()
 			// 写入 注册信息
 			c.writeAllotMsg(thisAllotMsgS)
-			//
 			c.allotMsgS = thisAllotMsgS
 
 			logger.Warn("checkOffset reWrite allotMsgS")
@@ -272,7 +267,7 @@ func (c *MyDistributor)checkOffset(){
 			}
 		}
 	}()
-	c.finishStatus = distributorCheckOffset
+	c.finishStatus.updateStatus(distributorCheckOffset)
 }
 
 
@@ -355,7 +350,7 @@ func (c *MyDistributor)WatchOffset(){
 						if ok{
 							break
 						}
-						time.Sleep(3*time.Second)
+						time.Sleep(time.Second)
 					}
 				}
 				kvCh, err := (*c.myStore).Watch(key,sign.quit)
@@ -379,7 +374,7 @@ func (c *MyDistributor)WatchOffset(){
 		}
 	}
 	c.watchOffsetSign.updateStart()
-	c.finishStatus = distributorWatchOffset
+	c.finishStatus.updateStatus(distributorWatchOffset)
 }
 
 // 监听 worker 进程 注册信息
@@ -404,7 +399,7 @@ func (c *MyDistributor)watchWorker(){
 	CheckErr(err)
 
 	c.watchStopSign.updateStart()
-	c.finishStatus = distributorWatchWorker
+	c.finishStatus.updateStatus(distributorWatchWorker)
 	go func(){
 		for {
 			select {
@@ -423,14 +418,12 @@ func (c *MyDistributor)watchWorker(){
 
 					if len(thisWorkers) > 0 {
 						if !thisWorkers.equal(&c.workers){
-							if c.writeAllotSign.getStatus() == routineStart{
-								c.writeAllotSign.quit <- struct{}{}
-							}
+							c.writeAllotSign.start2Stop()
 							c.workers = thisWorkers
 							//重新分配
 							res,err:=simpleAllot(&c.workers,&c.partitions)
 							CheckErr(err)
-							time.Sleep(time.Second)
+							c.writeAllotSign.waitIdle()
 							// 写入 注册信息
 							c.writeAllotMsg(res)
 							c.lock.Lock()

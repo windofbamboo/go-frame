@@ -67,7 +67,6 @@ func (c *AllotMsgSlice)equal(o *AllotMsgSlice) bool{
 	return true
 }
 
-
 type OffsetMsg struct {
 	AllotMsg
 	OffsetCommit   int64
@@ -109,7 +108,7 @@ const (
 	zkPathSplit = "/"
 )
 
-type ExecuteStatus int32
+type ExecuteStatus int8
 const (
 	routineInit 	ExecuteStatus = -1
 	routineStart 	ExecuteStatus = 0
@@ -148,6 +147,42 @@ func (o *ControlSign)updateStop(){
 	o.rwLock.Unlock()
 }
 func (o *ControlSign)getStatus() ExecuteStatus{
+	o.rwLock.RLock()
+	a:= o.status
+	o.rwLock.RUnlock()
+	return a
+}
+func (o *ControlSign)waitIdle() {
+	for{
+		if o.getStatus() == routineStop{
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+func (o *ControlSign)setStopSign() {
+	o.rwLock.Lock()
+	o.quit <- struct{}{}
+	o.rwLock.Unlock()
+}
+func (o *ControlSign)start2Stop() {
+	o.rwLock.Lock()
+	if o.status == routineStart{
+		o.quit <- struct{}{}
+	}
+	o.rwLock.Unlock()
+}
+
+type ConStatus struct{
+	status ExecuteStatus
+	rwLock sync.RWMutex
+}
+func (o *ConStatus)updateStatus(value ExecuteStatus){
+	o.rwLock.Lock()
+	o.status = value
+	o.rwLock.Unlock()
+}
+func (o *ConStatus)getStatus() ExecuteStatus{
 	o.rwLock.RLock()
 	a:= o.status
 	o.rwLock.RUnlock()

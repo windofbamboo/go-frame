@@ -21,8 +21,8 @@ type DealFunc func(in *sarama.ConsumerMessage) error
 type MyWorker struct {
 	brokers,zkAddr   NameSlice
 	instanceName,workerName,distributorInstanceName string
-	statusLock,processLock sync.Mutex
-	distributorStatus ExecuteStatus
+	processLock sync.Mutex
+	distributorStatus ConStatus
 	allotMsgS AllotMsgSlice
 	myStore *store.Store
 	timeTickerSign,registrySign,distributorSign,processSign ControlSign
@@ -80,7 +80,7 @@ func (p *MyWorker)InitParam(configFile string,logFile string) {
 	p.workerName = configContent.workerName
 	p.instanceName = configContent.instanceName
 
-	p.distributorStatus = workStatusInit
+	p.distributorStatus.updateStatus(workStatusInit)
 
 	p.timeTickerSign.init()
 	p.registrySign.init()
@@ -235,10 +235,8 @@ func (p *MyWorker) watchDistributorInfo() {
 		err=msgpack.Unmarshal(kv.Value,&msg)
 		LoggerErr("Unmarshal DistributorPath value",err)
 
-		p.statusLock.Lock()
 		p.allotMsgS = msg
-		p.distributorStatus = workStatusGetTask
-		p.statusLock.Unlock()
+		p.distributorStatus.updateStatus(workStatusGetTask)
 
 		logger.Info(fmt.Sprintf("first allotMsgS: %v ",p.allotMsgS))
 	}
@@ -252,24 +250,20 @@ func (p *MyWorker) watchDistributorInfo() {
 			select {
 				case pair := <-kvCh:
 					if pair==nil{
-						p.statusLock.Lock()
 						p.allotMsgS = AllotMsgSlice{}
-						if p.distributorStatus != workStatusInit{
-							p.distributorStatus = workStatusLostWatch
+						if p.distributorStatus.getStatus() != workStatusInit{
+							p.distributorStatus.updateStatus(workStatusLostWatch)
 						}
-						p.statusLock.Unlock()
 					}else{
 						var msg AllotMsgSlice
 						if err:=msgpack.Unmarshal(pair.Value,&msg);err!=nil{
 							panic(err)
 						}
-						p.statusLock.Lock()
 						if !msg.equal(&p.allotMsgS){
 							p.allotMsgS = msg
-							p.distributorStatus = workStatusGetTask
+							p.distributorStatus.updateStatus(workStatusGetTask)
 							logger.Warn(fmt.Sprintf("get allotMsgS: %v ",p.allotMsgS))
 						}
-						p.statusLock.Unlock()
 					}
 				case <-p.distributorSign.quit:
 					stopWatchCh <- struct{}{}
@@ -392,7 +386,7 @@ func (p *MyWorker)LoopProcess(){
 
 	logger.Warn("LoopProcess begin ... ")
 	//没有获取到任务，就走到这里，说明是接到了退出信号
-	if p.distributorStatus == workStatusInit{
+	if p.distributorStatus.getStatus() == workStatusInit{
 		p.timeTickerSign.updateStop()
 		p.processSign.updateStop()
 		return
@@ -400,7 +394,7 @@ func (p *MyWorker)LoopProcess(){
 
 	p.processLock.Lock()
 	p.process()
-	p.distributorStatus = workStatusStartTask
+	p.distributorStatus.updateStatus(workStatusStartTask)
 	p.processLock.Unlock()
 
 	//定时检测分配的任务是否有变动
@@ -411,33 +405,28 @@ func (p *MyWorker)LoopProcess(){
 			select {
 				case <-ticker.C:
 					p.processLock.Lock()
-					if p.distributorStatus == workStatusLostWatch {
-						p.statusLock.Lock()
-						p.distributorStatus = workStatusInit
-						p.statusLock.Unlock()
-						if p.processSign.getStatus() == routineStart {
-							p.processSign.quit <- struct{}{}
-						}
-						if p.distributorSign.getStatus() == routineStart {
-							p.distributorSign.quit <- struct{}{}
-						}
+					if p.distributorStatus.getStatus() == workStatusLostWatch {
 
-						time.Sleep(time.Second)
+						p.distributorStatus.updateStatus(workStatusInit)
+
+						p.processSign.start2Stop()
+						p.distributorSign.start2Stop()
+						p.processSign.waitIdle()
+						p.distributorSign.waitIdle()
+
 						p.watchDistributorInfo()
 						p.process()
-						p.distributorStatus = workStatusStartTask
+						p.distributorStatus.updateStatus(workStatusStartTask)
 
-					}else if p.distributorStatus == workStatusGetTask{
-						if p.processSign.getStatus() == routineStart{
-							p.processSign.quit <- struct{}{}
-						}
-						time.Sleep(time.Second)
+					}else if p.distributorStatus.getStatus() == workStatusGetTask{
+						p.processSign.start2Stop()
+						p.processSign.waitIdle()
 						if len(p.allotMsgS)>0{
 							p.process()
 						}else{
 							logger.Warn(" sleep ... ")
 						}
-						p.distributorStatus = workStatusStartTask
+						p.distributorStatus.updateStatus(workStatusStartTask)
 					}
 					p.processLock.Unlock()
 				case <-p.timeTickerSign.quit:
