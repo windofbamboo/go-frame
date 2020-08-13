@@ -1,0 +1,42 @@
+{
+  "groupName": ["app", "etcd", "redis"],
+  "IpGroup": {
+    "cluster01": {
+      "node01":{"host": "192.168.190.50", "port": "22"},
+      "node02":{"host": "192.168.190.51", "port": "22"},
+      "node03":{"host": "192.168.190.52", "port": "22"}
+    },
+    "cluster02": {
+      "node01":{"host": "192.168.190.50", "port": "22"},
+      "node02":{"host": "192.168.190.51", "port": "22"},
+      "node03":{"host": "192.168.190.52", "port": "22"}
+    },
+    "cluster03": {
+      "node01":{"host": "192.168.190.50", "port": "22"},
+      "node02":{"host": "192.168.190.51", "port": "22"},
+      "node03":{"host": "192.168.190.52", "port": "22"}
+    }
+  },
+  "clusterGroup": {
+      "app": {"cluster": "cluster01", "user": "app", "password": "app123"},
+      "etcd": {"cluster": "cluster01", "user": "etcd", "password": "etcd123"},
+      "redis": {"cluster": "cluster02", "user": "redis", "password": "redis123"}
+  },
+  "detailGroup": {
+    "app": {
+      "node01": {"host": "192.168.190.50", "port": "22", "user": "app", "password": "app123"},
+      "node02": {"host": "192.168.190.51", "port": "22", "user": "app", "password": "app123"},
+      "node03": {"host": "192.168.190.52", "port": "22", "user": "app", "password": "app123"}
+    },
+    "etcd": {
+      "node01": {"host": "192.168.190.50", "port": "22", "user": "etcd", "password": "etcd123"},
+      "node02": {"host": "192.168.190.51", "port": "22", "user": "etcd", "password": "etcd123"},
+      "node03": {"host": "192.168.190.52", "port": "22", "user": "etcd", "password": "etcd123"}
+    },
+    "redis": {
+      "node01": {"host": "192.168.190.50", "port": "22", "user": "redis", "password": "redis123"},
+      "node02": {"host": "192.168.190.51", "port": "22", "user": "redis", "password": "redis123"},
+      "node03": {"host": "192.168.190.52", "port": "22", "user": "redis", "password": "redis123"}
+    }
+  }
+}
