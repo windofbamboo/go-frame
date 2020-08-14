@@ -31,6 +31,7 @@ func ServersRun( nodeList []config.LogicUser, cmd string,wt *sync.WaitGroup,
 		log.Debug("串行执行")
 		for _, h := range nodeList {
 			server := machine.NewCmdServer(h.Host, h.Port, h.User, h.Password, "cmd", cmd, force, timeout)
+			log.Info("[servers]=%s", h.Host)
 			r := server.SRunCmd()
 			if r.Err != nil && safe {
 				log.Debug("%s执行出错", h.Host)
@@ -48,7 +49,48 @@ func ServersRun( nodeList []config.LogicUser, cmd string,wt *sync.WaitGroup,
 			ccons <- struct{}{}
 			server := machine.NewCmdServer(h.Host, h.Port, h.User, h.Password, "cmd", cmd, force, timeout)
 			wt.Add(1)
+			log.Info("[servers]=%s", h.Host)
 			go server.PRunCmd(crs)
+		}
+	}
+}
+
+func SinglePsw(node *config.LogicUser,newPSW string,force bool,timeout int) {
+
+	server := machine.NewCmdServer(node.Host, node.Port, node.User, node.Password,
+		"cmd", "", force, timeout)
+	r := server.SPswCmd(node.Password, newPSW)
+	output.Print(r)
+}
+
+func ServersPsw(nodeList []config.LogicUser,wt *sync.WaitGroup,
+	crs chan machine.Result, ccons chan struct{},newPSW string, safe bool, force bool, timeout int) {
+
+	ls := len(nodeList)
+	if cap(ccons) == 1 {
+		log.Debug("串行执行")
+		for _, h := range nodeList {
+			server := machine.NewCmdServer(h.Host, h.Port, h.User, h.Password, "cmd", "", force, timeout)
+			log.Info("[servers]=%s", h.Host)
+			r := server.SPswCmd(h.Password, newPSW)
+			if r.Err != nil && safe {
+				log.Debug("%s执行出错", h.Host)
+				output.Print(r)
+				break
+			} else {
+				output.Print(r)
+			}
+		}
+	}else {
+		log.Debug("并行执行")
+		go output.PrintResults2(crs, ls, wt, ccons, timeout)
+
+		for _, h := range nodeList {
+			ccons <- struct{}{}
+			server := machine.NewCmdServer(h.Host, h.Port, h.User, h.Password, "cmd", "", force, timeout)
+			wt.Add(1)
+			log.Info("[servers]=%s", h.Host)
+			go server.PPswCmd(h.Password, newPSW,crs)
 		}
 	}
 }

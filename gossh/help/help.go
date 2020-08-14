@@ -10,34 +10,34 @@ DESCRIPTION
 		1.runs cmd on the remote host.
 		2.push a local file or path to the remote host.
 		3.pull remote host file to local.
+		4.change password on the remote host
 
 USAGE
 	1.Single Mode
 		remote-comand:
-		gossh -t cmd -g group -node name -p passswrod [-f] -exec command 
-		gossh -t cmd -g group -node name -p passswrod [-f] -cmdFile file.txt
+		gossh -t cmd -g group -node name -p password [-f] -exec command 
+		gossh -t cmd -g group -node name -p password [-f] -cmdFile file.txt
 
 		Files-transfer:   
 		<push file>   
-		gossh -t push -g group -node name -p passswrod localfile  remotepath 
+		gossh -t push -g group -node name -p password localFile  remotePath 
 
 		<pull file> 
-		gossh -t pull -g group -node name -p passswrod remotefile localpath 
+		gossh -t pull -g group -node name -p password remoteFile localPath 
 
 		<change password> 
-		gossh -t pswChange -g group -node name -p passswrod newPsw 
+		gossh -t psw -g group -node name -p password newPsw
 
 	2.Batch Mode
 		Ssh-comand:
-		gossh -t cmd -g group -p passswrod [-f] -exec command 
-		gossh -t cmd -g group -p passswrod [-f] -cmdFile file.txt
+		gossh -t cmd -g group -p password [-f] -exec command 
+		gossh -t cmd -g group -p password [-f] -cmdFile file.txt
 
 		Files-transfer:
-		gossh -t push -g group -p passswrod localfile  remotepath 
-		gossh -t pull -g group -p passswrod remotefile localpath
+		gossh -t push -g group -p password localFile  remotePath 
+		gossh -t pull -g group -p password remoteFile localPath
 
 		<change password> 
-		gossh -t pswChange -g group -p passswrod newPsw 
-EMAIL
-    	email.tata@qq.com 
+		gossh -t psw -g group -p password newPsw 
+
 `

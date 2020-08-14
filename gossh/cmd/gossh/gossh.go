@@ -32,13 +32,15 @@ type InParam struct{
 	groupName string
 	nodeName string
 	password string
+	logLevel string
+
+	cmd string
 	force,pSafe bool
 
 	sourceFile string
 	targetPath string
-	cmd string
 
-	logLevel string
+	newPSW string
 }
 
 var (
@@ -115,7 +117,7 @@ func main() {
 			}
 		}
 	}
-	fmt.Println("111")
+
 	err=initLog(inParam.logLevel)
 	if err!=nil{
 		panic(err)
@@ -144,7 +146,19 @@ func main() {
 			run.ServersRun(nodeList,inParam.cmd, wg, cr, cCons, inParam.pSafe, inParam.force, pTimeOut)
 			wg.Wait()
 		}
+	case "psw":
+		if inParam.nodeName !="" {
 
+			log.Info("[servers]=%s", singleNode.Host)
+			run.SinglePsw(&singleNode,inParam.newPSW,inParam.force, pTimeOut)
+
+		} else {
+			cr := make(chan machine.Result)
+			cCons := make(chan struct{}, cons)
+			wg := &sync.WaitGroup{}
+			run.ServersPsw(nodeList,wg, cr, cCons, inParam.newPSW, inParam.pSafe, inParam.force, pTimeOut)
+			wg.Wait()
+		}
 	//push file or dir  to remote server
 	case "scp", "push":
 
@@ -165,6 +179,7 @@ func main() {
 		}else{
 			run.ServersPull(inParam.sourceFile, inParam.targetPath, nodeList, inParam.force)
 		}
+
 	}
 }
 
@@ -192,7 +207,6 @@ func initParam() (InParam,error){
 
 	switch *pRunType {
 	case "cmd":
-
 		inParam.force = *force
 		inParam.pSafe = *pSafe
 
@@ -216,6 +230,16 @@ func initParam() (InParam,error){
 			}
 			inParam.cmd = cmd
 		}
+		inParam.completion = true
+
+	case "psw":
+		if flag.NArg() != 1 {
+			inParam.completion = false
+			return inParam,nil
+		}
+		newPSW :=flag.Arg(0)
+		inParam.newPSW = newPSW
+		inParam.completion = true
 
 	case "scp", "push","pull":
 		if flag.NArg() != 2 {
@@ -228,6 +252,7 @@ func initParam() (InParam,error){
 
 		inParam.sourceFile = src
 		inParam.targetPath = dst
+		inParam.completion = true
 
 	default:
 		inParam.completion = false
@@ -241,8 +266,6 @@ func initParam() (InParam,error){
 //setting log
 func initLog(logLevel string) error {
 
-	fmt.Println("112")
-
 	switch logLevel {
 	case "debug":
 		log.SetLevel(logs.LevelDebug)
@@ -255,8 +278,6 @@ func initLog(logLevel string) error {
 	default:
 		log.SetLevel(logs.LevelInformational)
 	}
-
-	fmt.Println("113")
 
 	logPath := defaultLogPath
 	err := tools.MakePath(logPath)

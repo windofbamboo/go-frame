@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"gossh/logs"
+	psw "gossh/passwd"
 	"gossh/scp"
 	"gossh/tools"
 	"io"
@@ -110,6 +111,11 @@ func (s *Server) PRunCmd(crs chan Result) {
 	crs <- rs
 }
 
+func (s *Server) PPswCmd(oldPSW, newPSW string,crs chan Result) {
+	rs := s.SPswCmd(oldPSW, newPSW)
+	crs <- rs
+}
+
 // set Server.Cmd
 func (s *Server) SetCmd(cmd string) {
 	s.Cmd = cmd
@@ -120,7 +126,7 @@ func (s *Server) RunCmd() (result string, err error) {
 	if s.Psw == NO_PASSWORD {
 		return NO_PASSWORD, nil
 	}
-	client, err := s.getSshClient()
+	client, err := s.GetSshClient()
 	if err != nil {
 		return "getSSHClient error", err
 	}
@@ -155,7 +161,7 @@ func (s *Server) SRunCmd() Result {
 	var client *ssh.Client
 	var err error
 
-	client, err = s.getSshClient()
+	client, err = s.GetSshClient()
 	if err != nil {
 		rs.Err = err
 		return rs
@@ -189,6 +195,38 @@ func (s *Server) SRunCmd() Result {
 	rs.Result = string(bs)
 	return rs
 }
+
+func (s *Server) SPswCmd(oldPSW, newPSW string) Result {
+	rs := Result{
+		Ip:  s.Ip,
+		Cmd: s.Cmd,
+	}
+
+	if s.Psw == NO_PASSWORD {
+		rs.Err = errors.New(NO_PASSWORD)
+		return rs
+	}
+
+	var client *ssh.Client
+	var err error
+	client, err = s.GetSshClient()
+	if err != nil {
+		rs.Err = err
+		return rs
+	}
+	defer client.Close()
+
+	p:= psw.NewPassWd(client)
+
+	bs,err := p.ChangePSW(oldPSW, newPSW)
+	if err!=nil{
+		rs.Err = err
+		return rs
+	}
+	rs.Result = string(bs)
+	return rs
+}
+
 
 //execute a single command on remote server
 func (s *Server) checkRemoteFile() (result string) {
@@ -234,7 +272,7 @@ func (s *Server) RunScpDir() (err error) {
 		return errors.New(errString)
 	}
 
-	client, err := s.getSshClient()
+	client, err := s.GetSshClient()
 	if err != nil {
 		return err
 	}
@@ -308,7 +346,7 @@ func (s *Server) PullScp() (err error) {
 	}
 
 	//执行pull
-	client, err := s.getSshClient()
+	client, err := s.GetSshClient()
 	if err != nil {
 		return err
 	}
@@ -321,7 +359,7 @@ func (s *Server) PullScp() (err error) {
 
 //RunScp1() only can transport  file to remote host
 func (s *Server) RunScpFile() (result string, err error) {
-	client, err := s.getSshClient()
+	client, err := s.GetSshClient()
 	if err != nil {
 		return "GetSSHClient Error\n", err
 	}
@@ -373,7 +411,7 @@ func (s *Server) RunScpFile() (result string, err error) {
 }
 
 // implement ssh auth method [password keyboard-interactive] and [password]
-func (s *Server) getSshClient() (client *ssh.Client, err error) {
+func (s *Server) GetSshClient() (client *ssh.Client, err error) {
 	var authMethods []ssh.AuthMethod
 	keyboardInteractiveChallenge := func(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
 		if len(questions) == 0 {
