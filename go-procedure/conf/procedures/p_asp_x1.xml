@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<procedure name="p_asp_xxx">
+	<!---" 1. 支持游标  2. 支持子过程调用 3. 支持赋值 "-->
+	<params paramNum="2" >
+		<inParam name="regionCode" type="string" />
+		<inParam name="channel" type="int" />
+		
+		<outParam name="resultCode" type="int" />
+		<outParam name="resultInfo" type="string" />
+	</params>
+	<blocks>
+		<block orderNo="1" statementType="cursor" >
+			<cursor>
+				<!---" 类型支持 : Int String "-->
+				<cursorSql resultVars="f,g,h,j" varTypes="String,String,Int,Int" >
+					select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+					from pd.pm_product_offer_spec_char
+					where product_offering_id = #{productOfferingId}
+				</cursorSql>
+				<cursorLoop>
+					<session commitNum="500" >
+						<Sql orderNo="1" sqlType="select" resultVars="f,g,h,j" varTypes="String,String,Int,Int">
+							select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+							from pd.pm_product_offer_spec_char
+							where product_offering_id = #{productOfferingId}
+						</Sql>
+
+						<Sql orderNo="2" sqlType="insert"  >
+							select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+							from pd.pm_product_offer_spec_char
+							where product_offering_id = #{productOfferingId}
+						</Sql>
+
+						<Sql orderNo="3" sqlType="update"  >
+							select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+							from pd.pm_product_offer_spec_char
+							where product_offering_id = #{productOfferingId}
+						</Sql>
+					</session>
+				</cursorLoop>
+			</cursor>
+		</block>
+
+		<block orderNo="2" statementType="loop" >
+			<loop varName="hab"  varType="Int" enumValue="1,2,3,4">
+				<session commitNum="1" >
+					<Sql orderNo="1" sqlType="insert" >
+							  select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+							   from pd.pm_product_offer_spec_char
+							  where product_offering_id = #{productOfferingId}
+					</Sql>
+					<Sql orderNo="2" sqlType="insert" >
+							  select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+							   from pd.pm_product_offer_spec_char
+							  where product_offering_id = #{productOfferingId}
+					</Sql>
+					<Sql orderNo="3" sqlType="insert" >
+							  select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+							   from pd.pm_product_offer_spec_char
+							  where product_offering_id = #{productOfferingId}
+					</Sql>
+				</session>
+			</loop>
+			<procedure name="p_asp_xxx" inParam="" />
+		</block>
+
+		<block orderNo="3" statementType="common" >
+			<session commitNum="1" >
+				<Sql orderNo="1" sqlType="insert" >
+					select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+					from pd.pm_product_offer_spec_char
+					where product_offering_id = #{productOfferingId}
+				</Sql>
+				<Sql orderNo="2" sqlType="insert" >
+					select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+					from pd.pm_product_offer_spec_char
+					where product_offering_id = #{productOfferingId}
+				</Sql>
+				<Sql orderNo="3" sqlType="insert" >
+					select PRODUCT_OFFERING_ID,SPEC_CHAR_ID,VALUE_TYPE,VALUE,VALUE_MAX,GROUP_ID
+					from pd.pm_product_offer_spec_char
+					where product_offering_id = #{productOfferingId}
+				</Sql>
+			</session>
+		</block>
+	</blocks>
+</procedure>

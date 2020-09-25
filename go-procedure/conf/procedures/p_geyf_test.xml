@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<procedure name="p_geyf_test">
+    <!---" 1. 支持游标  2. 支持子过程调用 3. 支持赋值 "-->
+    <params>
+<!--        <inParam name="regionCode" type="string" />-->
+<!--        <inParam name="channel" type="int" />-->
+
+        <outParam name="resultCode" type="int" />
+        <outParam name="resultInfo" type="string" />
+    </params>
+    <blocks>
+        <block orderNo="1" statementType="cursor" >
+            <cursor>
+                <!---" 类型支持 : Int String "-->
+                <cursorSql resultVars="iv_userId,iv_he1,iv_he2" varTypes="Int,String,Int" >
+                    select user_id,he1,he2 from geyf_test1
+                </cursorSql>
+                <cursorLoop>
+                    <session commitNum="500" >
+                        <Sql orderNo="1" sqlType="delete" >
+                            delete from geyf_test2 where user_id = #{iv_userId}
+                        </Sql>
+
+                        <Sql orderNo="2" sqlType="insert"  >
+                            insert into geyf_test2(user_id,he1,he2) values(#{iv_userId},#{iv_he1},#{iv_he2});
+                        </Sql>
+
+                        <Sql orderNo="3" sqlType="update"  >
+                            update geyf_test2 set he2 = #{iv_he2} + 1 where user_id = #{iv_userId}
+                        </Sql>
+                    </session>
+                </cursorLoop>
+            </cursor>
+        </block>
+
+        <block orderNo="2" statementType="common" >
+            <session commitNum="1" >
+                <Sql orderNo="1" sqlType="delete" >
+                    delete from geyf_test3
+                </Sql>
+                <Sql orderNo="2" sqlType="insert" >
+                    insert into geyf_test3(user_id,he1,he2)
+                    select user_id,he1,he2 from geyf_test2
+                </Sql>
+            </session>
+        </block>
+    </blocks>
+</procedure>

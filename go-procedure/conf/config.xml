@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+	<server connectTimeout="10" backupLatency="30">
+		<servRegistry storeType="zk" storeAddr="192.168.190.50:2181,192.168.190.51:2181,192.168.190.52:2181" />
+<!--		<servRegistry storeType="consul" storeAddr="192.168.190.51:8500" />-->
+<!--		<servRegistry storeType="etcd" storeAddr="192.168.190.50:2379,192.168.190.51:2379,192.168.190.52:2379" />-->
+	</server>
+
+	<provider>
+		<instance name="p1" host="192.168.190.50" port="8972" />
+		<instance name="p2" host="192.168.190.51" port="8972" />
+		<instance name="p3" host="192.168.190.52" port="8972" />
+		<instance name="p4" host="192.168.190.50" port="8973" />
+		<instance name="p5" host="192.168.190.51" port="8973" />
+		<instance name="p6" host="192.168.190.52" port="8973" />
+	</provider>
+
+	<consumer>
+		<instance name="c1" host="192.168.190.50" initStatus="master" />
+		<instance name="c2" host="192.168.190.51" initStatus="backup" />
+		<instance name="c3" host="192.168.190.52" initStatus="backup" />
+	</consumer>
+
+	<!-- 和连接池的配置 -->
+	<environments defaultId = "cdrdb">
+		<environment id="cdrdb">
+			<poolSize maxIdleConnS="3" maxOpenConnS="40" connMaxLifeTime="5"/>
+			<driver type="postgres">
+				<property name="user" value="billtest" />
+				<property name="password" value="billtest" />
+				<property name="host" value="192.168.190.92" />
+				<property name="port" value="1921" />
+				<property name="dbname" value="boss" />
+				<property name="sslmode" value="disable" />
+			</driver>
+		</environment>
+
+		<environment id="billdb">
+			<poolSize maxIdleConnS="3" maxOpenConnS="40" connMaxLifeTime="5"/>
+			<driver type="oci8">
+				<property name="user" value="AD" />
+				<property name="password" value="ZHjk_3769" />
+				<property name="tns" value="bossdevpdb_taf" />
+			</driver>
+		</environment>
+
+		<environment id="billdb2">
+			<poolSize maxIdleConnS="3" maxOpenConnS="40" connMaxLifeTime="5"/>
+			<driver type="mysql">
+				<property name="user" value="billapp" />
+				<property name="password" value="123456" />
+				<property name="host" value="192.168.190.75" />
+				<property name="port" value="3306" />
+				<property name="dbname" value="mysql" />
+			</driver>
+		</environment>
+	</environments>
+
+	<!-- 过程 文件路径配置 -->
+	<procedures>
+<!--		<procedure resource="procedures/p_asp_x1.xml" />-->
+		<package resource="procedures" />
+	</procedures>
+
+	<!-- 定时任务 配置 -->
+	<tasks>
+		<taskFile resource="task.xml" />
+	</tasks>
+</configuration>

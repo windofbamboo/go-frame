@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<tasks>
+    <!--   Second | Minute | Hour | Dom | Month | Dow | Descriptor-->
+    <task id="1" cron="0 0 0 * * ?">
+        <job envId="billdb2" name="p_geyf_test" inParam="" timeOut="3600"/>
+<!--        <job envId="billdb2" name="p_geyf_test" inParam="" timeOut="3600"/>-->
+<!--        <job envId="billdb2" name="p_geyf_test" inParam="" timeOut="3600"/>-->
+    </task>
+</tasks>
