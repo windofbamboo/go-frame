@@ -4,13 +4,9 @@ import (
 	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/vmihailenco/msgpack"
+	"myFrame/example"
 	"time"
 )
-
-type Rectangle struct {
-	Length int
-	Height int
-}
 
 var(
 	brokers = []string{"192.168.190.50:9092","192.168.190.51:9092","192.168.190.52:9092"}
@@ -39,7 +35,7 @@ func syncProducer(){
 
 	var msgs []*sarama.ProducerMessage
 	for i:=2000;i<10000;i++{
-		shape:=Rectangle{i,i}
+		shape:=example.Rectangle{Length: i, Height: i}
 		if value,err:=msgpack.Marshal(shape);err==nil{
 			msg := &sarama.ProducerMessage{
 				Topic: topic,
@@ -92,7 +88,7 @@ func AsyncProducer(){
 	}
 
 	for i:=1;i<100;i++{
-		shape:=Rectangle{i,i}
+		shape:=example.Rectangle{Length: i, Height: i}
 		if value,err:=msgpack.Marshal(shape);err==nil{
 			str:= string(value)
 			msg.Value = sarama.ByteEncoder(str)

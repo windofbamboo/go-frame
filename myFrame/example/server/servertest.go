@@ -4,20 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"github.com/vmihailenco/msgpack"
-	"github.com/wonderivan/logger"
 	"myFrame"
+	"myFrame/example"
 	"os"
 	"path/filepath"
 )
-
-type Rectangle struct {
-	Length int
-	Height int
-}
-
-type Square struct {
-	S int
-}
 
 var (
 	DefaultInstanceName = "a"
@@ -33,19 +24,17 @@ func main() {
 	}
 
 	instanceName,configFile,logFile:=flagInit()
-	c:= myFrame.MyConsumer{}
-	c.InitParam(instanceName,configFile,logFile)
-
-	c.SuccessFunc = successDeal
-	c.FailFunc = failDeal
-	c.Start()
+	p:= myFrame.MyProvider{}
+	p.InitParam(instanceName,configFile,logFile)
+	p.RegistryDealFunc(deal)
+	p.Start()
 }
 
 var help = func() {
 	fmt.Println("====================================================")
 	fmt.Println("command :   -i [instanceName] -f [configFile] ")
 	fmt.Println("example : ")
-	fmt.Println("             client -i p1 ")
+	fmt.Println("             server -i c1 ")
 	fmt.Println("====================================================")
 }
 
@@ -65,25 +54,25 @@ func flagInit() (string,string,string) {
 	return instanceName,configFile,logFile
 }
 
-func  successDeal (msg *myFrame.Message) error{
+func deal(in *[]byte, out *[]byte) error{
 
-	var shape Rectangle
-	if err:=msgpack.Unmarshal(msg.Value,&shape);err!=nil{
-		logger.Error(fmt.Sprintf("Unmarshal value err : %v \n",err))
-		return err
-	}
-	var res Square
-	if err:=msgpack.Unmarshal(msg.Result,&res);err!=nil{
-		logger.Error(fmt.Sprintf("Unmarshal result err : %v \n",err))
+	var rectangle example.Rectangle
+	if err:=msgpack.Unmarshal(*in,&rectangle);err!=nil{
 		return err
 	}
 
-	//logger.Warn(fmt.Sprintf( "topic: %s ,partition: %d ,offset: %d ,key: %s ,shape: %v ,square: %d \n",
-	//		msg.Topic, msg.Partition, msg.Offset, msg.Key, shape,res.S))
+	if res,err:= msgpack.Marshal(getSquare(&rectangle));err!=nil{
+		return err
+	}else{
+		*out = res
+	}
+
 	return nil
 }
 
-func  failDeal (msg *myFrame.Message) error{
-	return nil
+func getSquare(rectangle *example.Rectangle) example.Square{
+	return example.Square{S: rectangle.Height * rectangle.Length}
 }
+
+
 
