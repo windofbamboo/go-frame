@@ -81,89 +81,23 @@ func QuerySql(db *sqlx.DB, Sql *string, args ...interface{}) (*sqlx.Rows, error)
 }
 
 //执行sql 自身维护事务
-func InsertSql(db *sqlx.DB, Sql *string, args ...interface{}) error {
+func ExecSql(db *sqlx.DB, Sql *string, args ...interface{}) error {
 
 	conn, err := db.Beginx()
 	if err != nil {
-		logger.Error(fmt.Sprintf("get tx err : [ %v ] ", err))
+		logger.Error(fmt.Sprintf("get conn err : [ %v ] ", err))
 		return err
 	}
 
-	result, err := conn.Exec(*Sql,args...)
+	_, err = conn.Exec(*Sql,args...)
 	if err != nil {
 		logger.Error(fmt.Sprintf("insert sql exec err : [ %v ] ", err))
 		conn.Rollback()
 		return err
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		logger.Error(fmt.Sprintf("insert sql exec err : [ %v ] ", err))
-		conn.Rollback()
-		return err
-	}
-
-	err = conn.Commit()
-	logger.Trace(fmt.Sprintf("insert success: %v", id))
-	return err
+	return conn.Commit()
 }
-
-//执行sql 自身维护事务
-func UpdateSql(db *sqlx.DB, Sql *string, args ...interface{}) error {
-
-	conn, err := db.Beginx()
-	if err != nil {
-		logger.Error(fmt.Sprintf("get tx err : [ %v ] ", err))
-		return err
-	}
-
-	result, err := conn.Exec(*Sql,args...)
-	if err != nil {
-		logger.Error(fmt.Sprintf("update sql exec err : [ %v ] ", err))
-		conn.Rollback()
-		return err
-	}
-
-	num, err := result.RowsAffected()
-	if err != nil {
-		logger.Error(fmt.Sprintf("update sql exec err : [ %v ] ", err))
-		conn.Rollback()
-		return err
-	}
-
-	err = conn.Commit()
-	logger.Trace(fmt.Sprintf("update success: %v", num))
-	return err
-}
-
-//执行sql 自身维护事务
-func DeleteSql(db *sqlx.DB, Sql *string, args ...interface{}) error {
-
-	conn, err := db.Beginx()
-	if err != nil {
-		logger.Error(fmt.Sprintf("get tx err : [ %v ] ", err))
-		return err
-	}
-
-	result, err := conn.Exec(*Sql,args...)
-	if err != nil {
-		logger.Error(fmt.Sprintf("delete sql exec err : [ %v ] ", err))
-		conn.Rollback()
-		return err
-	}
-
-	num, err := result.RowsAffected()
-	if err != nil {
-		logger.Error(fmt.Sprintf("delete sql exec err : [ %v ] ", err))
-		conn.Rollback()
-		return err
-	}
-
-	err = conn.Commit()
-	logger.Trace(fmt.Sprintf("delete success: %v", num))
-	return err
-}
-
 
 func TxQuerySql(conn *sqlx.Tx, Sql *string, params *[]Param, args ...interface{}) ([][]interface{}, error) {
 
@@ -216,82 +150,27 @@ func TxQuerySql(conn *sqlx.Tx, Sql *string, params *[]Param, args ...interface{}
 }
 
 //执行sql 自身不维护事务 ，事务在外部维护
-func TxInsertSql(conn *sqlx.Tx, Sql *string, args ...interface{}) error {
+func TxExecSql(conn *sqlx.Tx, Sql *string, args ...interface{}) (err error) {
 
-	var result sql.Result
-	var affect int64
-	var err error
+	if len(args)>0{
 
-	result, err = conn.Exec(*Sql,args...)
+		paramStr := "{ "
+		for _, arg := range args {
+			paramStr = paramStr + fmt.Sprint(arg) + " "
+		}
+		paramStr = paramStr + "}"
+
+		logger.Trace(fmt.Sprintf("sql : [%s] , param : %s ", *Sql, paramStr))
+	}else{
+		logger.Trace(fmt.Sprintf("sql : [%s] ", *Sql ))
+	}
+
+	_, err = conn.Exec(*Sql,args...)
 	if err != nil {
 		logger.Error(fmt.Sprintf("insert sql exec err : [ %v ] ", err))
-		return err
 	}
 
-	affect, err = result.RowsAffected()
-	if err != nil {
-		logger.Error(fmt.Sprintf("insert sql exec err : [ %v ] ", err))
-		return err
-	}
-
-	logger.Trace(fmt.Sprintf("insert %d rows success ", affect))
-	return nil
-}
-
-//执行sql 自身不维护事务 ，事务在外部维护
-func TxUpdateSql(conn *sqlx.Tx, Sql *string, args ...interface{}) error {
-
-	var result sql.Result
-	var affect int64
-	var err error
-
-	result, err = conn.Exec(*Sql,args...)
-	if err != nil {
-		logger.Error(fmt.Sprintf("update sql exec err : [ %v ] ", err))
-		return err
-	}
-
-	affect, err = result.RowsAffected()
-	if err != nil {
-		logger.Error(fmt.Sprintf("update sql exec err : [ %v ] ", err))
-		return err
-	}
-
-	paramStr := "param.{ "
-	for _, arg := range args {
-		paramStr = paramStr + fmt.Sprint(arg) + " "
-	}
-	paramStr = paramStr + "}"
-	logger.Trace(fmt.Sprintf("sql : [%s] %s update %d rows ", *Sql, paramStr, affect))
-	return nil
-}
-
-//执行sql 自身不维护事务 ，事务在外部维护
-func TxDeleteSql(conn *sqlx.Tx, Sql *string, args ...interface{}) error {
-
-	var result sql.Result
-	var affect int64
-	var err error
-
-	result, err = conn.Exec(*Sql,args...)
-	if err != nil {
-		logger.Error(fmt.Sprintf("delete sql exec err : [ %v ] ", err))
-		return err
-	}
-
-	affect, err = result.RowsAffected()
-	if err != nil {
-		logger.Error(fmt.Sprintf("delete sql exec err : [ %v ] ", err))
-		return err
-	}
-
-	paramStr := "param.{ "
-	for _, arg := range args {
-		paramStr = paramStr + fmt.Sprint(arg) + " "
-	}
-	paramStr = paramStr + "}"
-	logger.Trace(fmt.Sprintf("sql : [%s] %s delete %d rows ", *Sql, paramStr, affect))
-	return nil
+	return err
 }
 
 /**

@@ -302,15 +302,9 @@ func (p *Procedure)execSessionSql(conn *sqlx.Tx, sqls map[int]*SqlContext) error
 				p.varMap[paramName] = res[0][i]
 			}
 		case "insert":
-			if err = TxInsertSql(conn,&sqlNew,bindVar...); err != nil {
-				return err
-			}
 		case "update":
-			if err = TxUpdateSql(conn,&sqlNew,bindVar...); err != nil {
-				return err
-			}
 		case "delete":
-			if err = TxDeleteSql(conn,&sqlNew,bindVar...); err != nil {
+			if err = TxExecSql(conn,&sqlNew,bindVar...); err != nil {
 				return err
 			}
 		default:
