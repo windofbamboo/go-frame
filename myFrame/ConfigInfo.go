@@ -11,7 +11,7 @@ import (
 
 type zkContent struct {
 	zkAddr     []string
-	basePath,servicePath string
+	//basePath,servicePath string
 }
 
 type kafkaContent struct {
@@ -61,10 +61,6 @@ func ReadConfig(cfg string) error {
 			case strings.ToLower("zkAddr"):
 				var zkAddrStr = v.(string)
 				zk.zkAddr = strings.Split(zkAddrStr, ",")
-			case strings.ToLower("basePath"):
-				zk.basePath = v.(string)
-			case strings.ToLower("servicePath"):
-				zk.servicePath = v.(string)
 			default:
 		}
 	}
@@ -200,8 +196,8 @@ func PrintConfig() {
 		}
 		logMessage += fmt.Sprintf(" ]")
 	}
-	logMessage += fmt.Sprintf(" , basePath : %v",configContent.zk.basePath)
-	logMessage += fmt.Sprintf(" , servicePath : %v }",configContent.zk.servicePath)
+	//logMessage += fmt.Sprintf(" , basePath : %v",configContent.zk.basePath)
+	//logMessage += fmt.Sprintf(" , servicePath : %v }",configContent.zk.servicePath)
 	logger.Info(logMessage)
 
 	//kafka

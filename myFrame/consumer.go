@@ -9,6 +9,7 @@ import (
 	"github.com/docker/libkv/store"
 	myClient "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/protocol"
+	"github.com/smallnest/rpcx/share"
 	"github.com/wonderivan/logger"
 	"os"
 	"os/signal"
@@ -19,74 +20,60 @@ import (
 
 type MyConsumer struct {
 	brokers, topics, zkAddr                []string
-	instanceName, groupId, basePath, model string
+	appName,instanceName, groupId, model string
 	batchNum                               int32
 	batchWaitSecond                        int64
 	connectTimeout, backupLatency          int
 	myStore                                *store.Store
-	FailFunc                               func(msg *Message) error
-	SuccessFunc                            func(msg *Message) error
+	xClient 								*myClient.XClient
+	failFunc                               func(msg *Message) error
+	successFunc                            func(msg *Message) error
+	lockStopCh	chan struct{}
 }
 
-func (c *MyConsumer) InitParam(instanceName string, configFile string, logFile string) {
+func NewMyConsumer(appName,instanceName string) *MyConsumer {
 
-	err := CheckFile(logFile)
-	CheckErr(err)
-	contentStr, err := ReSetLogFileName(logFile, instanceName)
-	CheckErr(err)
-	err = logger.SetLogger(contentStr)
-	CheckErr(err)
+	m := &MyConsumer{}
 
-	err = CheckFile(configFile)
-	CheckErr(err)
+	m.appName = appName
+	m.instanceName = instanceName
+	m.zkAddr = configContent.zk.zkAddr
+	//m.basePath = configContent.zk.basePath
 
-	err = ReadConfig(configFile)
-	CheckErr(err)
+	m.brokers = configContent.kafka.brokers
+	m.topics = configContent.kafka.topics
+	m.groupId = configContent.kafka.consumer
+	m.batchNum = int32(configContent.kafka.batchNum)
+	m.batchWaitSecond = int64(configContent.kafka.waitSecond)
 
-	err = CheckInstance(InstanceTypeConsumer, instanceName)
-	CheckErr(err)
+	m.model = configContent.server.model
+	m.connectTimeout = configContent.server.connectTimeout
+	m.backupLatency = configContent.server.backupLatency
 
-	c.instanceName = instanceName
-	c.zkAddr = configContent.zk.zkAddr
-	c.basePath = configContent.zk.basePath
+	m.lockStopCh = make(chan struct{})
 
-	c.brokers = configContent.kafka.brokers
-	c.topics = configContent.kafka.topics
-	c.groupId = configContent.kafka.consumer
-	c.batchNum = int32(configContent.kafka.batchNum)
-	c.batchWaitSecond = int64(configContent.kafka.waitSecond)
-
-	c.model = configContent.server.model
-	c.connectTimeout = configContent.server.connectTimeout
-	c.backupLatency = configContent.server.backupLatency
+	return m
 }
 
-func (c *MyConsumer) Start() {
+type ResponseFunc func(in *Message) error
 
-	storeType := store.ZK
-	kv, err := libkv.NewStore(storeType, c.zkAddr, nil)
-	if err != nil {
-		logger.Error(fmt.Sprintf("init store err: %v", err))
-		panic(err)
-	}
-	c.myStore = &kv
-	defer (*c.myStore).Close()
+func (m *MyConsumer) RegistrySuccessFunc(fn ResponseFunc) {
+	m.successFunc = fn
+}
 
+func (m *MyConsumer) RegistryFailFunc(fn ResponseFunc) {
+	m.failFunc = fn
+}
+
+func (m *MyConsumer) Start() {
+
+	m.initStore()
+	defer (*m.myStore).Close()
 	//get lock
-	lockStopCh := make(chan struct{})
-	logger.Warn(fmt.Sprintf("%s try lock ...", c.instanceName))
-	for {
-		if ok, err := c.getQueueLock(lockPath, lockNode, lockStopCh); err != nil {
-			logger.Error(fmt.Sprintf("get lock err: %v", err))
-			panic(err)
-		} else {
-			if ok {
-				break
-			}
-		}
-		time.Sleep(tickerTime)
-	}
-	logger.Warn(fmt.Sprintf("%s get lock success , start deal data ...", c.instanceName))
+	m.getExecPermission()
+	//get client
+	m.initXClient()
+	defer (*m.xClient).Close()
 
 	//read kafka
 	config := cluster.NewConfig()
@@ -95,7 +82,7 @@ func (c *MyConsumer) Start() {
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 
 	// init consumer
-	consumer, err := cluster.NewConsumer(c.brokers, c.groupId, c.topics, config)
+	consumer, err := cluster.NewConsumer(m.brokers, m.groupId, m.topics, config)
 	if err != nil {
 		logger.Error(fmt.Sprintf("init consumer err: %v", err))
 		panic(err)
@@ -104,7 +91,6 @@ func (c *MyConsumer) Start() {
 	}
 	defer consumer.Close()
 
-	// trap SIGINT to trigger a shutdown.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals,
 		syscall.SIGHUP,
@@ -123,59 +109,90 @@ func (c *MyConsumer) Start() {
 			if !ok {
 				return
 			}
-			if c.model == "batch" {
-				go c.batchDealPartition(consumer, &part, failQueue, successQueue)
+			if m.model == "batch" {
+				go m.batchDealPartition(consumer, &part, failQueue, successQueue)
 			} else {
-				go c.singleDealPartition(consumer, &part, failQueue, successQueue)
+				go m.singleDealPartition(consumer, &part, failQueue, successQueue)
 			}
 		case msg := <-failQueue:
-			c.dealFail(&msg)
+			m.dealFail(&msg)
 		case msg := <-successQueue:
-			c.dealSuccess(&msg)
+			m.dealSuccess(&msg)
 		case <-signals:
-			lockStopCh <- struct{}{}
+			m.lockStopCh <- struct{}{}
 			logger.Warn("consumer end ... ")
 			return
 		}
 	}
 }
 
-func (c *MyConsumer) singleDealPartition(consumer *cluster.Consumer,
+
+func (m *MyConsumer) initStore(){
+
+	storeType := store.ZK
+	kv, err := libkv.NewStore(storeType, m.zkAddr, nil)
+	if err != nil {
+		logger.Error(fmt.Sprintf("init store err: %v", err))
+		panic(err)
+	}
+	m.myStore = &kv
+
+	logger.Trace("store init success ")
+}
+
+func (m *MyConsumer) initXClient() {
+
+	d := myClient.NewZookeeperDiscovery(FrameName+"/"+m.appName, ServicePath, m.zkAddr, nil)
+
+	option := &myClient.DefaultOption
+	option.CompressType = protocol.Gzip
+	option.ConnectTimeout = GetSecondTime(m.connectTimeout)
+	option.BackupLatency = GetSecondTime(m.backupLatency)
+	option.Heartbeat = true
+	option.HeartbeatInterval = time.Second
+	option.Group = DefaultServerGroup
+
+	client := myClient.NewXClient(ServicePath, myClient.Failtry, myClient.RoundRobin, d, *option)
+	m.xClient = &client
+}
+
+
+func (m *MyConsumer) singleDealPartition(consumer *cluster.Consumer,
 										pc *cluster.PartitionConsumer,
 										failQueue chan<- Message,
 										successQueue chan<- Message) {
 
-	xClient := c.getXClient()
-	defer xClient.Close()
+
+	(*m.xClient).Auth(DefaultToken)
+
+	ctx := context.WithValue(context.Background(), share.ReqMetaDataKey, make(map[string]string))
+	ctx = context.WithValue(ctx, share.ResMetaDataKey, make(map[string]string))
 
 	for msg := range (*pc).Messages() {
-		data := Message{Key: msg.Key, Value: msg.Value, Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
-
-		if res, err := xClient.Go(context.Background(), "singleDeal", data, data, nil); err != nil {
+		inData := Message{Key: msg.Key, Value: msg.Value, Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
+		outData := Message{}
+		if res, err := (*m.xClient).Go(ctx, "singleDeal", &inData, &outData, nil); err != nil {
 			logger.Error(fmt.Sprintf("xClient.Go err : %v", err))
 			panic(err)
 		} else {
 			replyCall := <-res.Done
 			if replyCall.Error != nil {
 				logger.Warn(fmt.Sprintf("server return err : %v", replyCall.Error))
-				if c.FailFunc != nil {
-					failQueue <- data
+				if m.failFunc != nil {
+					failQueue <- outData
 				}
 			} else {
 				consumer.MarkOffset(msg, "")
-				if c.SuccessFunc != nil {
-					successQueue <- data
+				if m.successFunc != nil {
+					successQueue <- outData
 				}
 			}
 		}
 	}
 }
 
-func (c *MyConsumer) batchDealPartition(consumer *cluster.Consumer, pc *cluster.PartitionConsumer,
+func (m *MyConsumer) batchDealPartition(consumer *cluster.Consumer, pc *cluster.PartitionConsumer,
 	failQueue chan<- Message, successQueue chan<- Message) {
-
-	xClient := c.getXClient()
-	defer xClient.Close()
 
 	var rowNum int32
 	var values []Message
@@ -186,9 +203,9 @@ func (c *MyConsumer) batchDealPartition(consumer *cluster.Consumer, pc *cluster.
 		values = append(values, data)
 		rowNum += 1
 		currTime := GetUnixTime()
-		if rowNum >= c.batchNum || currTime-lastTime >= c.batchWaitSecond {
+		if rowNum >= m.batchNum || currTime-lastTime >= m.batchWaitSecond {
 
-			if err := c.dealBatch(&xClient, &values, failQueue, successQueue); err != nil {
+			if err := m.dealBatch(&values, failQueue, successQueue); err != nil {
 				logger.Warn(fmt.Sprintf("dealBatch return err : %v", err))
 			} else {
 				lastTime = GetUnixTime()
@@ -201,21 +218,16 @@ func (c *MyConsumer) batchDealPartition(consumer *cluster.Consumer, pc *cluster.
 	}
 }
 
-func (c *MyConsumer) getXClient() myClient.XClient {
 
-	d := myClient.NewZookeeperDiscovery(c.basePath, ServicePath, c.zkAddr, nil)
-	option := &myClient.DefaultOption
-	option.CompressType = protocol.Gzip
-	option.ConnectTimeout = GetSecondTime(c.connectTimeout)
-	option.BackupLatency = GetSecondTime(c.backupLatency)
+func (m *MyConsumer) dealBatch(values *[]Message, failQueue chan<- Message, successQueue chan<- Message) error {
 
-	return myClient.NewXClient(ServicePath, myClient.Failtry, myClient.RoundRobin, d, *option)
-}
+	(*m.xClient).Auth(DefaultToken)
 
-func (c *MyConsumer) dealBatch(xClient *myClient.XClient, values *[]Message, failQueue chan<- Message, successQueue chan<- Message) error {
+	ctx := context.WithValue(context.Background(), share.ReqMetaDataKey, make(map[string]string))
+	ctx = context.WithValue(ctx, share.ResMetaDataKey, make(map[string]string))
 
-	if res, err := (*xClient).Go(context.Background(), "batchDeal", values, values, nil); err != nil {
-		if c.FailFunc != nil {
+	if res, err := (*m.xClient).Go(ctx, "batchDeal", values, values, nil); err != nil {
+		if m.failFunc != nil {
 			for _, message := range *values {
 				failQueue <- message
 			}
@@ -225,7 +237,7 @@ func (c *MyConsumer) dealBatch(xClient *myClient.XClient, values *[]Message, fai
 	} else {
 		replyCall := <-res.Done
 		if replyCall.Error != nil {
-			if c.FailFunc != nil {
+			if m.failFunc != nil {
 				for _, message := range *values {
 					failQueue <- message
 				}
@@ -233,7 +245,7 @@ func (c *MyConsumer) dealBatch(xClient *myClient.XClient, values *[]Message, fai
 			logger.Warn(fmt.Sprintf("batchDeal return err : %v", replyCall.Error))
 			return replyCall.Error
 		} else {
-			if c.SuccessFunc != nil {
+			if m.successFunc != nil {
 				for _, message := range *values {
 					successQueue <- message
 				}
@@ -243,47 +255,74 @@ func (c *MyConsumer) dealBatch(xClient *myClient.XClient, values *[]Message, fai
 	}
 }
 
-func (c *MyConsumer) dealSuccess(msg *Message) {
-	if c.SuccessFunc != nil {
-		if err := c.SuccessFunc(msg); err != nil {
+func (m *MyConsumer) dealSuccess(msg *Message) {
+	if m.successFunc != nil {
+		if err := m.successFunc(msg); err != nil {
 			logger.Error(fmt.Sprintf("exec SuccessFunc err : %v", err))
 		}
 	}
 }
 
-func (c *MyConsumer) dealFail(msg *Message) {
-	if c.FailFunc != nil {
-		if err := c.FailFunc(msg); err != nil {
+func (m *MyConsumer) dealFail(msg *Message) {
+	if m.failFunc != nil {
+		if err := m.failFunc(msg); err != nil {
 			logger.Error(fmt.Sprintf("FailFunc err : %v", err))
 		}
 	}
 }
 
-func (c *MyConsumer) createNode(node string) error {
+func (m *MyConsumer) getExecPermission(){
 
-	if ok, err := (*c.myStore).Exists(node); err != nil {
+	logger.Warn(fmt.Sprintf("%s try lock ...", m.instanceName))
+	for {
+		if ok, err := m.getQueueLock(m.lockStopCh); err != nil {
+			logger.Error(fmt.Sprintf("get lock err: %v", err))
+			panic(err)
+		} else {
+			if ok {
+				break
+			}
+		}
+		time.Sleep(tickerTime)
+	}
+	logger.Warn(fmt.Sprintf("%s get lock success , start deal data ...", m.instanceName))
+}
+
+func (m *MyConsumer) createNode(node string) error {
+
+	if ok, err := (*m.myStore).Exists(node); err != nil {
 		return err
 	} else {
 		if ok {
 			return nil
 		}
 	}
-	if err := (*c.myStore).Put(node, []byte{1}, nil); err != nil {
+	if err := (*m.myStore).Put(node, []byte{1}, nil); err != nil {
 		return err
 	} else {
 		return nil
 	}
 }
 
-func (c *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <-chan struct{}) (bool, error) {
+func (m *MyConsumer) getQueueLock(lockStopCh <-chan struct{}) (bool, error) {
 
-	if err := c.createNode(lockPath); err != nil {
+	var node = FrameName
+	if err := m.createNode(node); err != nil {
 		return false, err
 	}
-	mySequence := GetCurrentTime()
-	tempPath := lockPath + "/" + lockName + mySequence
+	node = FrameName + "/" + m.appName
+	if err := m.createNode(node); err != nil {
+		return false, err
+	}
+	appLockPath := FrameName + "/" + m.appName + "/" +lockPath
+	if err := m.createNode(node); err != nil {
+		return false, err
+	}
 
-	if err := (*c.myStore).Put(tempPath, []byte(lockName), &store.WriteOptions{TTL: 2 * tickerTime}); err != nil {
+	mySequence := GetCurrentTime()
+	tempPath := appLockPath + "/" + m.appName + mySequence
+
+	if err := (*m.myStore).Put(tempPath, []byte(m.appName), &store.WriteOptions{TTL: 2 * tickerTime}); err != nil {
 		return false, err
 	}
 
@@ -295,7 +334,7 @@ func (c *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <
 		for {
 			select {
 			case <-ticker.C:
-				err := (*c.myStore).Put(tempPath, []byte(lockName), &store.WriteOptions{TTL: 2 * tickerTime})
+				err := (*m.myStore).Put(tempPath, []byte(m.appName), &store.WriteOptions{TTL: 2 * tickerTime})
 				if err != nil {
 					fmt.Printf("set node value err: %v", err)
 				}
@@ -307,7 +346,7 @@ func (c *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <
 		}
 	}()
 
-	kvCh, err := (*c.myStore).WatchTree(lockPath, stopWatchCh)
+	kvCh, err := (*m.myStore).WatchTree(appLockPath, stopWatchCh)
 	if err != nil {
 		return false, err
 	}
@@ -317,7 +356,7 @@ func (c *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <
 		case child := <-kvCh:
 			var minSequence string
 			for _, pair := range child {
-				sequenceName := strings.ReplaceAll(pair.Key, lockName, "")
+				sequenceName := strings.ReplaceAll(pair.Key, m.appName, "")
 
 				if minSequence > sequenceName || minSequence == "" {
 					minSequence = sequenceName

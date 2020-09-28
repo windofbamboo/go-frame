@@ -22,11 +22,12 @@ const (
 	StoreTypeConsul	string = "consul"
 	StoreTypeZk	string = "zk"
 	// store 目录相关
-	basePath = "go-procedure" // server 注册根目录
+	FrameName = "myFrame"  // 框架名
+	AppName = "go-procedure" // server 注册根目录
 	ServicePath = "service"   // 在basePath下,注册服务的子目录
 
 	lockPath = "lock"		// consumer 获取权限时，lock根目录
-	lockNode = "client"		// consumer 获取权限时，lock名称
+	lockNodeName = "client"		// consumer 获取权限时，lock名称
 
 	ProviderInstanceName string = "myProvider"
 	ConsumerInstanceName string = "myConsumer"

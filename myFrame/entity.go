@@ -11,12 +11,19 @@ type Message struct {
 	Result			[]byte
 }
 
-var (
+const (
 	InstanceTypeProvider string = "provider"
 	InstanceTypeConsumer string = "consumer"
-	ServicePath = "myService"
+
+	FrameName = "myFrame"  // 框架名
+	ServicePath = "service"
+
 	lockPath = "lock"
-	lockNode = "client"
 	tickerTime = 30 * time.Second
+
+
+	DefaultServerGroup string = "myGroup"
+	DefaultToken string = "tGzv3JOkF0XG5Qx2TlKWIA"
+	EnvConfigPath string ="CONFIG_PATH"
 )
 

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	myMetrics "github.com/rcrowley/go-metrics"
+	"github.com/smallnest/rpcx/protocol"
 	"github.com/smallnest/rpcx/server"
 	"github.com/smallnest/rpcx/serverplugin"
 	"github.com/wonderivan/logger"
@@ -15,37 +16,18 @@ import (
 )
 
 type MyProvider struct {
+	instanceName string
 	addr     *string
 	zkAddr   []string
-	basePath string
+	appPath  string
 }
 
-type DealFunc func(in *[]byte, out *[]byte) error
+func NewMyProvider(appName,instanceName string) *MyProvider {
 
-var dealFunc DealFunc
-
-func (m *MyProvider) InitParam(instanceName string, configFile string, logFile string) {
-
-	err := CheckFile(logFile)
-	CheckErr(err)
-
-	contentStr, err := ReSetLogFileName(logFile, instanceName)
-	CheckErr(err)
-
-	err = logger.SetLogger(contentStr)
-	CheckErr(err)
-
-	err = CheckFile(configFile)
-	CheckErr(err)
-
-	err = ReadConfig(configFile)
-	CheckErr(err)
-
-	err = CheckInstance(InstanceTypeProvider, instanceName)
-	CheckErr(err)
-
+	m:= &MyProvider{}
+	m.instanceName = instanceName
 	m.zkAddr = configContent.zk.zkAddr
-	m.basePath = configContent.zk.basePath
+	m.appPath = FrameName + "/" + appName
 
 	var addrStr string
 	for _, s := range configContent.provider {
@@ -55,13 +37,18 @@ func (m *MyProvider) InitParam(instanceName string, configFile string, logFile s
 		}
 	}
 	m.addr = flag.String("addr", addrStr, "server address")
+
+	return m
 }
 
-func (p *MyProvider) RegistryDealFunc(fn DealFunc) {
+type DealFunc func(in *[]byte, out *[]byte) error
+var dealFunc DealFunc
+
+func (m *MyProvider) RegistryDealFunc(fn DealFunc) {
 	dealFunc = fn
 }
 
-func (p *MyProvider) Start() {
+func (m *MyProvider) Start() {
 
 	s := server.NewServer()
 
@@ -89,43 +76,36 @@ func (p *MyProvider) Start() {
 		}
 	}()
 
-	p.addRegistryPlugin(s)
-	if err := s.RegisterFunction(ServicePath, singleDeal, ""); err != nil {
+	m.addRegistryPlugin(s)
+
+	meta := fmt.Sprintf("group=%v",DefaultServerGroup)
+	if err := s.RegisterFunction(ServicePath, singleDeal, meta); err != nil {
 		logger.Error(fmt.Sprintf("Register function singleDeal err : %v", err))
 		panic(err)
 	}
-	if err := s.RegisterFunction(ServicePath, batchDeal, ""); err != nil {
+	if err := s.RegisterFunction(ServicePath, batchDeal, meta); err != nil {
 		logger.Error(fmt.Sprintf("Register function batchDeal err : %v", err))
 		panic(err)
 	}
 
-	//metricsPlugin :=serverplugin.NewMetricsPlugin(myMetrics.DefaultRegistry)
-	//s.Plugins.Add(metricsPlugin)
-	//p.startMetrics()
+	s.AuthFunc = auth
 
-	if err := s.Serve("tcp", *p.addr); err != nil {
+	if err := s.Serve("tcp", *m.addr); err != nil {
 		logger.Error(fmt.Sprintf("start server err : %v", err))
+		panic(err)
 	}
 }
 
-//func (p *MyProvider)startMetrics() {
-//
-//	myMetrics.RegisterRuntimeMemStats(myMetrics.DefaultRegistry)
-//	go myMetrics.CaptureRuntimeMemStats(myMetrics.DefaultRegistry, time.Second)
-//
-//	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:2003")
-//	go myGraphite.Graphite(myMetrics.DefaultRegistry, 1e9, "rpcx.services.host.127_0_0_1", addr)
-//}
-
-func (p *MyProvider) addRegistryPlugin(s *server.Server) {
+func (m *MyProvider) addRegistryPlugin(s *server.Server) {
 
 	r := &serverplugin.ZooKeeperRegisterPlugin{
-		ServiceAddress:   "tcp@" + *p.addr,
-		ZooKeeperServers: p.zkAddr,
-		BasePath:         p.basePath,
+		ServiceAddress:   "tcp@" + *m.addr,
+		ZooKeeperServers: m.zkAddr,
+		BasePath:         m.appPath,
 		Metrics:          myMetrics.NewRegistry(),
 		UpdateInterval:   time.Minute,
 	}
+
 	err := r.Start()
 	if err != nil {
 		logger.Error(err)
@@ -168,4 +148,12 @@ func batchDeal(ctx context.Context, inPut *[]Message, outPut *[]Message) error {
 		*outPut = append(*outPut, msg)
 	}
 	return nil
+}
+
+func auth(ctx context.Context, req *protocol.Message, token string) error {
+
+	if token == DefaultToken {
+		return nil
+	}
+	return fmt.Errorf ("invalid token")
 }

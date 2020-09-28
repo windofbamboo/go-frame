@@ -7,15 +7,6 @@ import (
 	"github.com/wonderivan/logger"
 	"myFrame"
 	"myFrame/example"
-	"os"
-	"path/filepath"
-)
-
-var (
-	DefaultInstanceName = "a"
-	DefaultConfigPath     = "myFrame"
-	DefaultConfigFileName = "myFrame.json"
-	LogConfigFileName     = "myLog.json"
 )
 
 func main() {
@@ -24,43 +15,33 @@ func main() {
 		help()
 	}
 
-	instanceName,configFile,logFile:=flagInit()
-	c:= myFrame.MyConsumer{}
-	c.InitParam(instanceName,configFile,logFile)
+	instanceName:=flagInit()
 
-	c.SuccessFunc = successDeal
-	c.FailFunc = failDeal
+	myFrame.ConsumerInit(example.AppName,instanceName,example.LogConfigFileName,example.DefaultConfigFileName)
+
+	c:= myFrame.NewMyConsumer(example.AppName,instanceName)
+	c.RegistrySuccessFunc(successDeal)
+	c.RegistryFailFunc(failDeal)
 	c.Start()
 }
 
 var help = func() {
 	fmt.Println("====================================================")
-	fmt.Println("command :   -i [instanceName] -f [configFile] ")
+	fmt.Println("command :   -i [instanceName] ")
 	fmt.Println("example : ")
 	fmt.Println("             client -i p1 ")
 	fmt.Println("====================================================")
 }
 
-func flagInit() (string,string,string) {
+func flagInit() (instanceName string) {
 
-	exPath := os.Getenv("CONFIG_PATH")
-	logFile := filepath.Join(exPath, DefaultConfigPath, LogConfigFileName)
-	localFile := filepath.Join(exPath, DefaultConfigPath, DefaultConfigFileName)
-
-	//logFile = "D:\\backup\\study\\go\\myFrame\\conf\\myLog.json"
-	//localFile = "D:\\backup\\study\\go\\myFrame\\conf\\myFrame.json"
-
-	var instanceName string
-	var configFile string
-
-	flag.StringVar(&instanceName, "i", DefaultInstanceName, " instanceName ")
-	flag.StringVar(&configFile, "f", localFile, "configFile for read")
+	flag.StringVar(&instanceName, "i", example.DefaultInstanceName, " instanceName ")
 	flag.Parse()
 
-	return instanceName,configFile,logFile
+	return instanceName
 }
 
-func  successDeal (msg *myFrame.Message) error{
+func successDeal (msg *myFrame.Message) error{
 
 	var shape example.Rectangle
 	if err:=msgpack.Unmarshal(msg.Value,&shape);err!=nil{

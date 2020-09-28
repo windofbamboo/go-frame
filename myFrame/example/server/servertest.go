@@ -6,15 +6,6 @@ import (
 	"github.com/vmihailenco/msgpack"
 	"myFrame"
 	"myFrame/example"
-	"os"
-	"path/filepath"
-)
-
-var (
-	DefaultInstanceName = "a"
-	DefaultConfigPath     = "myFrame"
-	DefaultConfigFileName = "myFrame.json"
-	LogConfigFileName     = "myLog.json"
 )
 
 func main() {
@@ -23,35 +14,29 @@ func main() {
 		help()
 	}
 
-	instanceName,configFile,logFile:=flagInit()
-	p:= myFrame.MyProvider{}
-	p.InitParam(instanceName,configFile,logFile)
+	instanceName:=flagInit()
+	myFrame.ProviderInit(example.AppName,instanceName,example.LogConfigFileName,example.DefaultConfigFileName)
+
+	p:= myFrame.NewMyProvider(example.AppName,instanceName)
+
 	p.RegistryDealFunc(deal)
 	p.Start()
 }
 
 var help = func() {
 	fmt.Println("====================================================")
-	fmt.Println("command :   -i [instanceName] -f [configFile] ")
+	fmt.Println("command :   -i [instanceName] ")
 	fmt.Println("example : ")
 	fmt.Println("             server -i c1 ")
 	fmt.Println("====================================================")
 }
 
-func flagInit() (string,string,string) {
+func flagInit() (instanceName string) {
 
-	exPath := os.Getenv("CONFIG_PATH")
-	logFile := filepath.Join(exPath, DefaultConfigPath, LogConfigFileName)
-	localFile := filepath.Join(exPath, DefaultConfigPath, DefaultConfigFileName)
-
-	var instanceName string
-	var configFile string
-
-	flag.StringVar(&instanceName, "i", DefaultInstanceName, " instanceName ")
-	flag.StringVar(&configFile, "f", localFile, "configFile for read")
+	flag.StringVar(&instanceName, "i", example.DefaultInstanceName, " instanceName ")
 	flag.Parse()
 
-	return instanceName,configFile,logFile
+	return instanceName
 }
 
 func deal(in *[]byte, out *[]byte) error{

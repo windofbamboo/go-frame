@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"log"
 	"sync"
+
+	"golang.org/x/crypto/ssh"
 )
 
 var (
@@ -35,37 +36,41 @@ func NewPassWd(client *ssh.Client) *PassWd {
 	return psw
 }
 
-func pushCmd(stdinBuf *io.WriteCloser,cmd string,param ...string ) error{
+func pushCmd(stdinBuf *io.WriteCloser, cmd string, param ...string) error {
 
 	var err error
-	_,err=(*stdinBuf).Write(getByteCmd(cmd))
-	if err!=nil{return err}
+	_, err = (*stdinBuf).Write(getByteCmd(cmd))
+	if err != nil {
+		return err
+	}
 
-	if len(param)>0{
+	if len(param) > 0 {
 		for i := range param {
-			_,err=(*stdinBuf).Write(getByteCmd(param[i]))
-			if err!=nil{return err}
+			_, err = (*stdinBuf).Write(getByteCmd(param[i]))
+			if err != nil {
+				return err
+			}
 		}
 	}
-	_,err=(*stdinBuf).Write(getByteCmd(end))
-	if err!=nil{
+	_, err = (*stdinBuf).Write(getByteCmd(end))
+	if err != nil {
 		return err
-	}else{
+	} else {
 		return nil
 	}
 }
 
-func getByteCmd(cmd string) []byte{
+func getByteCmd(cmd string) []byte {
 	cmd = cmd + "\n"
 	return []byte(cmd)
 }
 
-func (psw *PassWd) ChangePSW(oldPSW, newPSW string) ([]byte,error) {
+func (psw *PassWd) ChangePSW(oldPSW, newPSW string) ([]byte, error) {
 
 	session, err := psw.client.NewSession()
 	if err != nil {
 		log.Fatalln("Failed to create session: " + err.Error())
-		return nil,err
+		return nil, err
 	}
 	defer session.Close()
 
@@ -89,22 +94,26 @@ func (psw *PassWd) ChangePSW(oldPSW, newPSW string) ([]byte,error) {
 	}()
 
 	err = session.Shell()
-	if err != nil {return nil,err}
+	if err != nil {
+		return nil, err
+	}
 
 	//压入命令
-	err = pushCmd(&stdinBuf,cmd,oldPSW,newPSW,newPSW)
-	if err != nil {return nil,err}
+	err = pushCmd(&stdinBuf, cmd, oldPSW, newPSW, newPSW)
+	if err != nil {
+		return nil, err
+	}
 
 	err = session.Wait()
-	return b.b.Bytes(),err
+	return b.b.Bytes(), err
 }
 
-func (psw *PassWd) ChangePSWbyRoot(user, newPSW string) ([]byte,error) {
+func (psw *PassWd) ChangePSWbyRoot(user, newPSW string) ([]byte, error) {
 
 	session, err := psw.client.NewSession()
 	if err != nil {
 		log.Fatalln("Failed to create session: " + err.Error())
-		return nil,err
+		return nil, err
 	}
 	defer session.Close()
 
@@ -128,14 +137,18 @@ func (psw *PassWd) ChangePSWbyRoot(user, newPSW string) ([]byte,error) {
 	}()
 
 	err = session.Shell()
-	if err != nil {return nil,err}
+	if err != nil {
+		return nil, err
+	}
 
 	//压入命令
-	cmd = fmt.Sprintf("echo \"%s\" | passwd --stdin %s",newPSW,user)
-	err = pushCmd(&stdinBuf,cmd)
-	if err != nil {return nil,err}
+	cmd = fmt.Sprintf("echo \"%s\" | passwd --stdin %s", newPSW, user)
+	err = pushCmd(&stdinBuf, cmd)
+	if err != nil {
+		return nil, err
+	}
 
 	err = session.Wait()
 
-	return b.b.Bytes(),err
+	return b.b.Bytes(), err
 }

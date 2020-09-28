@@ -8,3 +8,10 @@ type Rectangle struct {
 type Square struct {
 	S int
 }
+
+const (
+	AppName = "myFrameTest" // server 注册根目录
+	DefaultInstanceName = "fart"
+	DefaultConfigFileName = "myFrame.json"
+	LogConfigFileName     = "myLog.json"
+)
