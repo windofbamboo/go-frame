@@ -21,7 +21,7 @@ type MyProvider struct {
 	storeType 	string
 	storeAddr   []string //store 地址
 	addr     	*string  //store上的注册节点目录
-	basePath 	string
+	appPath 	string
 }
 
 func NewMyProvider(instanceName string) *MyProvider{
@@ -31,7 +31,7 @@ func NewMyProvider(instanceName string) *MyProvider{
 	m.instanceName = instanceName
 	m.storeType = configContent.server.storeType
 	m.storeAddr = configContent.server.storeAddr
-	m.basePath = basePath
+	m.appPath = FrameName + "/" + AppName
 
 	var addrStr string
 	for _, s := range configContent.providers {
@@ -98,7 +98,7 @@ func (m *MyProvider) addRegistryPlugin(s *server.Server) {
 		r := &serverplugin.ZooKeeperRegisterPlugin{
 			ServiceAddress:   "tcp@" + *m.addr,
 			ZooKeeperServers: m.storeAddr,
-			BasePath:         m.basePath,
+			BasePath:         m.appPath,
 			Metrics:          myMetrics.NewRegistry(),
 			UpdateInterval:   time.Minute,
 		}
@@ -114,7 +114,7 @@ func (m *MyProvider) addRegistryPlugin(s *server.Server) {
 		r := &serverplugin.EtcdV3RegisterPlugin{
 			ServiceAddress: "tcp@" + *m.addr,
 			EtcdServers:    m.storeAddr,
-			BasePath:       m.basePath,
+			BasePath:       m.appPath,
 			Metrics:        myMetrics.NewRegistry(),
 			UpdateInterval: time.Minute,
 		}
@@ -130,7 +130,7 @@ func (m *MyProvider) addRegistryPlugin(s *server.Server) {
 		r := &serverplugin.ConsulRegisterPlugin{
 			ServiceAddress: "tcp@" + *m.addr,
 			ConsulServers:  m.storeAddr,
-			BasePath:       m.basePath,
+			BasePath:       m.appPath,
 			Metrics:        myMetrics.NewRegistry(),
 			UpdateInterval: time.Minute,
 		}

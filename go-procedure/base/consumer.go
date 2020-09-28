@@ -157,14 +157,16 @@ func (m *MyConsumer) initStore(){
 
 func (m *MyConsumer) initXClient() {
 
+	var appPath = FrameName + "/" + AppName
+
 	var d myClient.ServiceDiscovery
 	switch m.storeType {
 	case StoreTypeEtcd:
-		d = myClient.NewEtcdV3Discovery(basePath, ServicePath, m.storeAddr, nil)
+		d = myClient.NewEtcdV3Discovery(appPath, ServicePath, m.storeAddr, nil)
 	case StoreTypeConsul:
-		d = myClient.NewConsulDiscovery(basePath, ServicePath, m.storeAddr, nil)
+		d = myClient.NewConsulDiscovery(appPath, ServicePath, m.storeAddr, nil)
 	case StoreTypeZk:
-		d = myClient.NewZookeeperDiscovery(basePath, ServicePath, m.storeAddr, nil)
+		d = myClient.NewZookeeperDiscovery(appPath, ServicePath, m.storeAddr, nil)
 	}
 
 	option := &myClient.DefaultOption
@@ -175,6 +177,7 @@ func (m *MyConsumer) initXClient() {
 	option.HeartbeatInterval = time.Second
 	option.Group = DefaultServerGroup
 
+	//appServicePath:=FrameName+"/"+AppName+"/"+ServicePath
  	client := myClient.NewXClient(ServicePath, myClient.Failtry, myClient.RoundRobin, d, *option)
 	m.xClient = &client
 
@@ -185,7 +188,7 @@ func (m *MyConsumer) getExecPermission(){
 
 	logger.Warn(fmt.Sprintf("%s try lock ...", m.instanceName))
 	for {
-		if ok, err := m.getQueueLock(lockPath, lockNode, m.lockStopCh); err != nil {
+		if ok, err := m.getQueueLock(m.lockStopCh); err != nil {
 			logger.Error(fmt.Sprintf("get lock err: %v", err))
 			panic(err)
 		} else {
@@ -272,15 +275,25 @@ func (m *MyConsumer) createNode(node string) error {
 	}
 }
 
-func (m *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <-chan struct{}) (bool, error) {
+func (m *MyConsumer) getQueueLock(lockStopCh <-chan struct{}) (bool, error) {
 
-	if err := m.createNode(lockPath); err != nil {
+	var node = FrameName
+	if err := m.createNode(node); err != nil {
 		return false, err
 	}
-	mySequence := GetCurrentTime()
-	tempPath := lockPath + "/" + lockName + mySequence
+	node = FrameName + "/" + AppName
+	if err := m.createNode(node); err != nil {
+		return false, err
+	}
+	appLockPath := FrameName + "/" + AppName + "/" +lockPath
+	if err := m.createNode(node); err != nil {
+		return false, err
+	}
 
-	if err := (*m.myStore).Put(tempPath, []byte(lockName), &store.WriteOptions{TTL: 2 * tickerTime}); err != nil {
+	mySequence := GetCurrentTime()
+	tempPath := appLockPath + "/" + lockNodeName + mySequence
+
+	if err := (*m.myStore).Put(tempPath, []byte(lockNodeName), &store.WriteOptions{TTL: 2 * tickerTime}); err != nil {
 		return false, err
 	}
 
@@ -292,7 +305,7 @@ func (m *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <
 		for {
 			select {
 			case <-ticker.C:
-				err := (*m.myStore).Put(tempPath, []byte(lockName), &store.WriteOptions{TTL: 2 * tickerTime})
+				err := (*m.myStore).Put(tempPath, []byte(lockNodeName), &store.WriteOptions{TTL: 2 * tickerTime})
 				if err != nil {
 					fmt.Printf("set node value err: %v", err)
 				}
@@ -304,7 +317,7 @@ func (m *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <
 		}
 	}()
 
-	kvCh, err := (*m.myStore).WatchTree(lockPath, stopWatchCh)
+	kvCh, err := (*m.myStore).WatchTree(appLockPath, stopWatchCh)
 	if err != nil {
 		return false, err
 	}
@@ -314,7 +327,7 @@ func (m *MyConsumer) getQueueLock(lockPath string, lockName string, lockStopCh <
 		case child := <-kvCh:
 			var minSequence string
 			for _, pair := range child {
-				sequenceName := strings.ReplaceAll(pair.Key, lockName, "")
+				sequenceName := strings.ReplaceAll(pair.Key, lockNodeName, "")
 
 				if minSequence > sequenceName || minSequence == "" {
 					minSequence = sequenceName
