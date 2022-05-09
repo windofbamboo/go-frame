@@ -12,7 +12,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/alexbrainman/odbc/api"
+	"github.com/windofbamboo/go-frame/odbc/api"
 )
 
 // TODO(brainman): see if I could use SQLExecDirect anywhere

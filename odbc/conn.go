@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/alexbrainman/odbc/api"
+	"github.com/windofbamboo/go-frame/odbc/api"
 )
 
 type Conn struct {

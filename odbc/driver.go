@@ -9,7 +9,7 @@ package odbc
 import (
 	"database/sql"
 
-	"github.com/alexbrainman/odbc/api"
+	"github.com/windofbamboo/go-frame/odbc/api"
 )
 
 var drv Driver

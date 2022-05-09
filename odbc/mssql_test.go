@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexbrainman/odbc/api"
+	"github.com/windofbamboo/go-frame/odbc/api"
 )
 
 var (
