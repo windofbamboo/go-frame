@@ -42,7 +42,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		return nil, errors.New("empty dsn")
 	}
 
-	const prefix = "oracle://"
+	const prefix = "oceanbase://"
 
 	if strings.HasPrefix(dsnString, prefix) {
 		dsnString = dsnString[len(prefix):]
