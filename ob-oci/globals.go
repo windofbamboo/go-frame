@@ -58,9 +58,9 @@ type (
 
 	// Conn is Oracle connection
 	Conn struct {
+		env                  *C.OCIEnv
 		svc                  *C.OCISvcCtx
 		srv                  *C.OCIServer
-		env                  *C.OCIEnv
 		errHandle            *C.OCIError
 		usrSession           *C.OCISession
 		txHandle             *C.OCITrans
@@ -85,6 +85,7 @@ type (
 	Stmt struct {
 		conn        *Conn
 		stmt        *C.OCIStmt
+		//dsc         *C.OCIDescribe
 		closed      bool
 		ctx         context.Context
 		cacheKey    string // if statement caching is enabled, this is the key for this statement into the cache

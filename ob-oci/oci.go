@@ -197,9 +197,7 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 		charset,        // The client-side character set for the current environment handle. If it is 0, the NLS_LANG setting is used.
 		charset,        // The client-side national character set for the current environment handle. If it is 0, NLS_NCHAR setting is used.
 	)
-	if result != C.OCI_SUCCESS {
-		return nil, errors.New("OCIEnvNlsCreate error")
-	}
+
 	conn.env = *envPP
 
 	// defer on error handle free
@@ -209,29 +207,21 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 	defer func(errP *error) {
 		if *errP != nil {
 			if doneSessionBegin {
-				C.OCISessionEnd(
-					conn.svc,
-					conn.errHandle,
-					conn.usrSession,
-					C.OCI_DEFAULT,
-				)
+				C.OCISessionEnd(conn.svc,conn.errHandle,conn.usrSession,C.OCI_DEFAULT)
 			}
 			if doneLogon {
-				C.OCILogoff(
-					conn.svc,
-					conn.errHandle,
-				)
+				C.OCILogoff(conn.svc,conn.errHandle)
 			}
 			if doneServerAttach {
-				C.OCIServerDetach(
-					conn.srv,
-					conn.errHandle,
-					C.OCI_DEFAULT,
-				)
+				C.OCIServerDetach(conn.srv,conn.errHandle,C.OCI_DEFAULT)
 			}
 			if conn.txHandle != nil {
 				C.OCIHandleFree(unsafe.Pointer(conn.txHandle), C.OCI_HTYPE_TRANS)
 				conn.txHandle = nil
+			}
+			if conn.errHandle != nil {
+				C.OCIHandleFree(unsafe.Pointer(conn.errHandle), C.OCI_HTYPE_ERROR)
+				conn.errHandle = nil
 			}
 			if conn.usrSession != nil {
 				C.OCIHandleFree(unsafe.Pointer(conn.usrSession), C.OCI_HTYPE_SESSION)
@@ -244,10 +234,6 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 			if conn.srv != nil {
 				C.OCIHandleFree(unsafe.Pointer(conn.srv), C.OCI_HTYPE_SERVER)
 				conn.srv = nil
-			}
-			if conn.errHandle != nil {
-				C.OCIHandleFree(unsafe.Pointer(conn.errHandle), C.OCI_HTYPE_ERROR)
-				conn.errHandle = nil
 			}
 			C.OCIHandleFree(unsafe.Pointer(conn.env), C.OCI_HTYPE_ENV)
 		}
