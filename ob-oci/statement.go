@@ -44,6 +44,7 @@ func (stmt *Stmt) Close() error {
 		)
 	}
 
+	C.OCIHandleFree(unsafe.Pointer(stmt.stmt), C.OCI_HTYPE_STMT)
 	stmt.stmt = nil
 
 	return stmt.conn.getError(result)

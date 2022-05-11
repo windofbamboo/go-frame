@@ -16,7 +16,6 @@ import (
 	"log"
 	"reflect"
 	"regexp"
-	"strconv"
 	"sync"
 	"time"
 	"unsafe"
@@ -83,8 +82,8 @@ type (
 
 	// Stmt is Oracle statement
 	Stmt struct {
-		conn        *Conn
-		stmt        *C.OCIStmt
+		conn *Conn
+		stmt *C.OCIStmt
 		//dsc         *C.OCIDescribe
 		closed      bool
 		ctx         context.Context
@@ -175,41 +174,41 @@ func init() {
 	sql.Register("ob_oci", Driver)
 
 	// set defaultCharset to AL32UTF8
-	var envP *C.OCIEnv
-	envPP := &envP
-	var result C.sword
-	result = C.OCIEnvCreate(envPP, C.OCI_DEFAULT, nil, nil, nil, nil, 0, nil)
-	if result != C.OCI_SUCCESS {
-		panic("OCIEnvCreate error")
-	}
-	nlsLang := cString("AL32UTF8")
-	defaultCharset = C.OCINlsCharSetNameToId(unsafe.Pointer(*envPP), (*C.oratext)(nlsLang))
-	C.free(unsafe.Pointer(nlsLang))
-	C.OCIHandleFree(unsafe.Pointer(*envPP), C.OCI_HTYPE_ENV)
+	// var envP *C.OCIEnv
+	// envPP := &envP
+	// var result C.sword
+	// result = C.OCIEnvCreate(envPP, C.OCI_DEFAULT, nil, nil, nil, nil, 0, nil)
+	// if result != C.OCI_SUCCESS {
+	// 	panic("OCIEnvCreate error")
+	// }
+	// nlsLang := cString("AL32UTF8")
+	// defaultCharset = C.OCINlsCharSetNameToId(unsafe.Pointer(*envPP), (*C.oratext)(nlsLang))
+	// C.free(unsafe.Pointer(nlsLang))
+	// C.OCIHandleFree(unsafe.Pointer(*envPP), C.OCI_HTYPE_ENV)
 
-	// build timeLocations: GMT -12 to 14
-	timeLocationNames := []string{"Etc/GMT+12", "Pacific/Pago_Pago", // -12 to -11
-		"Pacific/Honolulu", "Pacific/Gambier", "Pacific/Pitcairn", "America/Phoenix", "America/Costa_Rica", // -10 to -6
-		"America/Panama", "America/Puerto_Rico", "America/Punta_Arenas", "America/Noronha", "Atlantic/Cape_Verde", // -5 to -1
-		"GMT",                                                                         // 0
-		"Africa/Lagos", "Africa/Cairo", "Europe/Moscow", "Asia/Dubai", "Asia/Karachi", // 1 to 5
-		"Asia/Dhaka", "Asia/Jakarta", "Asia/Shanghai", "Asia/Tokyo", "Australia/Brisbane", // 6 to 10
-		"Pacific/Noumea", "Asia/Anadyr", "Pacific/Enderbury", "Pacific/Kiritimati", // 11 to 14
-	}
-	var err error
-	timeLocations = make([]*time.Location, len(timeLocationNames))
-	for i := 0; i < len(timeLocations); i++ {
-		timeLocations[i], err = time.LoadLocation(timeLocationNames[i])
-		if err != nil {
-			name := "GMT"
-			if i < 12 {
-				name += strconv.FormatInt(int64(i-12), 10)
-			} else if i > 12 {
-				name += "+" + strconv.FormatInt(int64(i-12), 10)
-			}
-			timeLocations[i] = time.FixedZone(name, 3600*(i-12))
-		}
-	}
+	// // build timeLocations: GMT -12 to 14
+	// timeLocationNames := []string{"Etc/GMT+12", "Pacific/Pago_Pago", // -12 to -11
+	// 	"Pacific/Honolulu", "Pacific/Gambier", "Pacific/Pitcairn", "America/Phoenix", "America/Costa_Rica", // -10 to -6
+	// 	"America/Panama", "America/Puerto_Rico", "America/Punta_Arenas", "America/Noronha", "Atlantic/Cape_Verde", // -5 to -1
+	// 	"GMT",                                                                         // 0
+	// 	"Africa/Lagos", "Africa/Cairo", "Europe/Moscow", "Asia/Dubai", "Asia/Karachi", // 1 to 5
+	// 	"Asia/Dhaka", "Asia/Jakarta", "Asia/Shanghai", "Asia/Tokyo", "Australia/Brisbane", // 6 to 10
+	// 	"Pacific/Noumea", "Asia/Anadyr", "Pacific/Enderbury", "Pacific/Kiritimati", // 11 to 14
+	// }
+	// var err error
+	// timeLocations = make([]*time.Location, len(timeLocationNames))
+	// for i := 0; i < len(timeLocations); i++ {
+	// 	timeLocations[i], err = time.LoadLocation(timeLocationNames[i])
+	// 	if err != nil {
+	// 		name := "GMT"
+	// 		if i < 12 {
+	// 			name += strconv.FormatInt(int64(i-12), 10)
+	// 		} else if i > 12 {
+	// 			name += "+" + strconv.FormatInt(int64(i-12), 10)
+	// 		}
+	// 		timeLocations[i] = time.FixedZone(name, 3600*(i-12))
+	// 	}
+	// }
 }
 
 /*

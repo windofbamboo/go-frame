@@ -100,7 +100,12 @@ func (conn *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt
 
 	queryP := cString(query)
 	defer C.free(unsafe.Pointer(queryP))
-	var stmtTemp *C.OCIStmt
+
+	//绑定 stmt
+	var handleTemp unsafe.Pointer
+	handle := &handleTemp
+	C.OCIHandleAlloc(unsafe.Pointer(conn.env), handle, C.OCI_HTYPE_STMT, 0, nil)
+	stmtTemp := (*C.OCIStmt)(*handle)
 	stmt := &stmtTemp
 
 	if ctx.Err() != nil {

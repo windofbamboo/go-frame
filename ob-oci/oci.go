@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -138,7 +137,7 @@ func (tx *Tx) Commit() error {
 	if rv := C.OCITransCommit(
 		tx.conn.svc,
 		tx.conn.errHandle,
-		0,
+		C.OCI_DEFAULT,
 	); rv != C.OCI_SUCCESS {
 		return tx.conn.getError(rv)
 	}
@@ -151,7 +150,7 @@ func (tx *Tx) Rollback() error {
 	if rv := C.OCITransRollback(
 		tx.conn.svc,
 		tx.conn.errHandle,
-		0,
+		C.OCI_DEFAULT,
 	); rv != C.OCI_SUCCESS {
 		return tx.conn.getError(rv)
 	}
@@ -178,25 +177,13 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 	// environment handle
 	var envP *C.OCIEnv
 	envPP := &envP
+
 	var result C.sword
-	charset := C.ub2(0)
 
-	if os.Getenv("NLS_LANG") == "" && os.Getenv("NLS_NCHAR") == "" {
-		charset = defaultCharset
-	}
-
-	result = C.OCIEnvNlsCreate(
-		envPP,          // pointer to a handle to the environment
-		C.OCI_THREADED, // environment mode: https://docs.oracle.com/cd/B28359_01/appdev.111/b28395/oci16rel001.htm#LNOCI87683
-		nil,            // Specifies the user-defined context for the memory callback routines.
-		nil,            // Specifies the user-defined memory allocation function. If mode is OCI_THREADED, this memory allocation routine must be thread-safe.
-		nil,            // Specifies the user-defined memory re-allocation function. If the mode is OCI_THREADED, this memory allocation routine must be thread safe.
-		nil,            // Specifies the user-defined memory free function. If mode is OCI_THREADED, this memory free routine must be thread-safe.
-		0,              // Specifies the amount of user memory to be allocated for the duration of the environment.
-		nil,            // Returns a pointer to the user memory of size xtramemsz allocated by the call for the user.
-		charset,        // The client-side character set for the current environment handle. If it is 0, the NLS_LANG setting is used.
-		charset,        // The client-side national character set for the current environment handle. If it is 0, NLS_NCHAR setting is used.
-	)
+	/*初始化OCI应用环境*/
+	result = C.OCIInitialize(C.OCI_DEFAULT, nil, nil, nil, nil)
+	/*初始化环境句柄*/
+	result = C.OCIEnvInit(envPP, C.OCI_DEFAULT, 0, nil)
 
 	conn.env = *envPP
 
@@ -207,13 +194,13 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 	defer func(errP *error) {
 		if *errP != nil {
 			if doneSessionBegin {
-				C.OCISessionEnd(conn.svc,conn.errHandle,conn.usrSession,C.OCI_DEFAULT)
+				C.OCISessionEnd(conn.svc, conn.errHandle, conn.usrSession, C.OCI_DEFAULT)
 			}
 			if doneLogon {
-				C.OCILogoff(conn.svc,conn.errHandle)
+				C.OCILogoff(conn.svc, conn.errHandle)
 			}
 			if doneServerAttach {
-				C.OCIServerDetach(conn.srv,conn.errHandle,C.OCI_DEFAULT)
+				C.OCIServerDetach(conn.srv, conn.errHandle, C.OCI_DEFAULT)
 			}
 			if conn.txHandle != nil {
 				C.OCIHandleFree(unsafe.Pointer(conn.txHandle), C.OCI_HTYPE_TRANS)
@@ -239,9 +226,10 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 		}
 	}(&err)
 
-	// error handle
 	var handleTemp unsafe.Pointer
 	handle := &handleTemp
+
+	// error handle
 	result = C.OCIHandleAlloc(
 		unsafe.Pointer(conn.env), // An environment handle
 		handle,                   // Returns a handle
@@ -264,12 +252,26 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 	defer C.free(unsafe.Pointer(password))
 
 	if useOCISessionBegin {
+		// service handle
+		handle, _, err = conn.ociHandleAlloc(C.OCI_HTYPE_SVCCTX, 0)
+		if err != nil {
+			return nil, fmt.Errorf("allocate service handle error: %v", err)
+		}
+		conn.svc = (*C.OCISvcCtx)(*handle)
+
 		// server handle
 		handle, _, err = conn.ociHandleAlloc(C.OCI_HTYPE_SERVER, 0)
 		if err != nil {
 			return nil, fmt.Errorf("allocate server handle error: %v", err)
 		}
 		conn.srv = (*C.OCIServer)(*handle)
+
+		// user session handle
+		handle, _, err = conn.ociHandleAlloc(C.OCI_HTYPE_SESSION, 0)
+		if err != nil {
+			return nil, fmt.Errorf("allocate user session handle error: %v", err)
+		}
+		conn.usrSession = (*C.OCISession)(*handle)
 
 		if len(dsn.Connect) < 1 {
 			result = C.OCIServerAttach(
@@ -294,27 +296,6 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 		}
 		doneServerAttach = true
 
-		// service handle
-		handle, _, err = conn.ociHandleAlloc(C.OCI_HTYPE_SVCCTX, 0)
-		if err != nil {
-			return nil, fmt.Errorf("allocate service handle error: %v", err)
-		}
-		conn.svc = (*C.OCISvcCtx)(*handle)
-
-		// sets the server context attribute of the service context
-		err = conn.ociAttrSet(unsafe.Pointer(conn.svc), C.OCI_HTYPE_SVCCTX, unsafe.Pointer(conn.srv), 0, C.OCI_ATTR_SERVER)
-		if err != nil {
-			return nil, fmt.Errorf("server context attribute set error: %v", err)
-		}
-
-		// user session handle
-		handle, _, err = conn.ociHandleAlloc(C.OCI_HTYPE_SESSION, 0)
-		if err != nil {
-			return nil, fmt.Errorf("allocate user session handle error: %v", err)
-		}
-		conn.usrSession = (*C.OCISession)(*handle)
-
-		credentialType := C.ub4(C.OCI_CRED_EXT)
 		if len(dsn.Username) > 0 {
 			// specifies a username to use for authentication
 			err = conn.ociAttrSet(unsafe.Pointer(conn.usrSession), C.OCI_HTYPE_SESSION, unsafe.Pointer(username), C.ub4(len(dsn.Username)), C.OCI_ATTR_USERNAME)
@@ -327,22 +308,13 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 			if err != nil {
 				return nil, fmt.Errorf("password attribute set error: %v", err)
 			}
-
-			credentialType = C.OCI_CRED_RDBMS
 		}
 
-		result = C.OCISessionBegin(
-			conn.svc,           // service context
-			conn.errHandle,     // error handle
-			conn.usrSession,    // user session context
-			credentialType,     // type of credentials to use for establishing the user session: OCI_CRED_RDBMS or OCI_CRED_EXT
-			conn.operationMode, // mode of operation. https://docs.oracle.com/cd/B28359_01/appdev.111/b28395/oci16rel001.htm#LNOCI87690
-		)
-		if result != C.OCI_SUCCESS && result != C.OCI_SUCCESS_WITH_INFO {
-			err = conn.getError(result)
-			return nil, err
+		// sets the server context attribute of the service context
+		err = conn.ociAttrSet(unsafe.Pointer(conn.svc), C.OCI_HTYPE_SVCCTX, unsafe.Pointer(conn.srv), 0, C.OCI_ATTR_SERVER)
+		if err != nil {
+			return nil, fmt.Errorf("server context attribute set error: %v", err)
 		}
-		doneSessionBegin = true
 
 		// sets the authentication context attribute of the service context
 		err = conn.ociAttrSet(unsafe.Pointer(conn.svc), C.OCI_HTYPE_SVCCTX, unsafe.Pointer(conn.usrSession), 0, C.OCI_ATTR_SESSION)
@@ -357,6 +329,19 @@ func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 				return nil, fmt.Errorf("stmt cache size attribute set error: %v", err)
 			}
 		}
+
+		result = C.OCISessionBegin(
+			conn.svc,           // service context
+			conn.errHandle,     // error handle
+			conn.usrSession,    // user session context
+			C.OCI_CRED_RDBMS,   // type of credentials to use for establishing the user session: OCI_CRED_RDBMS or OCI_CRED_EXT
+			conn.operationMode, // mode of operation. https://docs.oracle.com/cd/B28359_01/appdev.111/b28395/oci16rel001.htm#LNOCI87690
+		)
+		if result != C.OCI_SUCCESS && result != C.OCI_SUCCESS_WITH_INFO {
+			err = conn.getError(result)
+			return nil, err
+		}
+		doneSessionBegin = true
 
 	} else {
 
