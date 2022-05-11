@@ -479,7 +479,7 @@ func (stmt *Stmt) makeDefines() ([]defineStruct, error) {
 		}
 		defer C.OCIDescriptorFree(unsafe.Pointer(param), C.OCI_DTYPE_PARAM)
 
-		var dataType C.ub2 // external datatype of the column: https://docs.oracle.com/cd/E11882_01/appdev.112/e10646/oci03typ.htm#CEGIEEJI
+		var dataType C.ub2
 		_, err = stmt.conn.ociAttrGet(param, unsafe.Pointer(&dataType), C.OCI_ATTR_DATA_TYPE)
 		if err != nil {
 			freeDefines(defines)
