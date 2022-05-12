@@ -1,9 +1,0 @@
-prefix=/u01
-includedir=${prefix}/obclient/include
-libdir=${prefix}/obclient/lib
-
-Name: oci
-Description: ob oci Client
-Version: 2.0.1.6
-Cflags: -I${includedir}
-Libs: -L${libdir} -lobci
