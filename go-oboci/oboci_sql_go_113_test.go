@@ -32,7 +32,7 @@ func TestStatementCaching(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), TestContextTimeout)
 	conn, err := db.Conn(ctx)
 	cancel()
-	// we need to get access to the raw connection so we can access the different fields on the oboci.Stmt
+	// we need to get access to the raw connection so we can access the different fields on the oci8.Stmt
 	var rawConn *Conn
 	// NOTE that conn.Raw() is only available with Go >= 1.13
 	_ = conn.Raw(func(driverConn interface{}) error {

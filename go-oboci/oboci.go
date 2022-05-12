@@ -42,7 +42,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		return nil, errors.New("empty dsn")
 	}
 
-	const prefix = "oracle://"
+	const prefix = "oceanbase://"
 
 	if strings.HasPrefix(dsnString, prefix) {
 		dsnString = dsnString[len(prefix):]
@@ -160,6 +160,9 @@ func (tx *Tx) Rollback() error {
 
 // Open opens a new database connection
 func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
+	
+	fmt.Printf("ppppppppppp------ \n")
+	
 	var err error
 	var dsn *DSN
 	if dsn, err = ParseDSN(dsnString); err != nil {

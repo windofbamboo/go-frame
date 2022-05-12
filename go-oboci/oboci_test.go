@@ -14,7 +14,7 @@ import (
 )
 
 // to run database tests
-// go test -v github.com/mattn/go-oboci -args -disableDatabase=false -hostValid type_hostname_here -username type_username_here -password "type_password_here"
+// go test -v github.com/mattn/go-oci8 -args -disableDatabase=false -hostValid type_hostname_here -username type_username_here -password "type_password_here"
 // look at test.sh for Oracle user setup example
 
 var (
@@ -73,6 +73,8 @@ type testQueryResult struct {
 
 // TestMain sets up testing
 func TestMain(m *testing.M) {
+
+	fmt.Printf(" start ... \n")
 	code := setupForTesting()
 	if code != 0 {
 		os.Exit(code)
@@ -131,6 +133,11 @@ func setupForTesting() int {
 	flag.BoolVar(&TestDisableDestructive, "disableDestructive", false, "set to true to disable the destructive Oracle tests")
 
 	flag.Parse()
+	
+	TestUsername = "cloudtest_accounting"
+	TestPassword = "cloudtest"
+	TestHostValid = "(DESCRIPTION = (ADDRESS_LIST =(ADDRESS = (PROTOCOL = TCP)(HOST = 172.32.148.119)(PORT = 1521))) (CONNECT_DATA =(SERVER = DEDICATED)(SERVICE_NAME = ngntdb1)))"
+	TestDisableDatabase = false
 
 	var err error
 	TestContextTimeout, err = time.ParseDuration(TestContextTimeoutString)
