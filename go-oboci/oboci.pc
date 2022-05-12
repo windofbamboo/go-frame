@@ -1,0 +1,9 @@
+includedir=/u01/obclient/include
+libdir=/u01/obclient/lib
+
+Name: oboci
+Description: ob oci Client
+Version: 2.0.1.6
+Cflags: -I${includedir}
+Libs: -L${libdir} -lobci -lobclnt
+
