@@ -161,8 +161,6 @@ func (tx *Tx) Rollback() error {
 // Open opens a new database connection
 func (drv *DriverStruct) Open(dsnString string) (driver.Conn, error) {
 	
-	fmt.Printf("ppppppppppp------ \n")
-	
 	var err error
 	var dsn *DSN
 	if dsn, err = ParseDSN(dsnString); err != nil {

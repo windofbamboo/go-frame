@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -136,27 +137,8 @@ func (stmt *Stmt) bindValues(values []driver.Value, namedValues []driver.NamedVa
 			if isOut {
 
 				if len(value) > 32767 {
-					var lobP *unsafe.Pointer
-					lobP, _, err = stmt.conn.ociDescriptorAlloc(C.OCI_DTYPE_LOB, 0)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					sbind.dataType = C.SQLT_BLOB
-					sbind.pbuf = unsafe.Pointer(lobP)
-					sbind.maxSize = C.sb4(sizeOfNilPointer)
-					*sbind.length = C.ub2(sizeOfNilPointer)
-					lobLocator := (**C.OCILobLocator)(sbind.pbuf)
-					err = stmt.conn.ociLobCreateTemporary(*lobLocator, C.SQLCS_IMPLICIT, C.OCI_TEMP_BLOB)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					err = stmt.conn.ociLobWrite(*lobLocator, C.SQLCS_IMPLICIT, value)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
+					freeBinds(binds)
+					return nil, errors.New("not suppot Lob")
 				} else {
 					sbind.dataType = C.SQLT_BIN
 					sbind.pbuf = unsafe.Pointer(cByteN(value, 32768))
@@ -171,27 +153,8 @@ func (stmt *Stmt) bindValues(values []driver.Value, namedValues []driver.NamedVa
 			} else {
 
 				if len(value) > 32767 {
-					var lobP *unsafe.Pointer
-					lobP, _, err = stmt.conn.ociDescriptorAlloc(C.OCI_DTYPE_LOB, 0)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					sbind.dataType = C.SQLT_BLOB
-					sbind.pbuf = unsafe.Pointer(lobP)
-					sbind.maxSize = C.sb4(sizeOfNilPointer)
-					*sbind.length = C.ub2(sizeOfNilPointer)
-					lobLocator := (**C.OCILobLocator)(sbind.pbuf)
-					err = stmt.conn.ociLobCreateTemporary(*lobLocator, C.SQLCS_IMPLICIT, C.OCI_TEMP_BLOB)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					err = stmt.conn.ociLobWrite(*lobLocator, C.SQLCS_IMPLICIT, value)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
+					freeBinds(binds)
+					return nil, errors.New("not suppot Lob")
 				} else {
 					sbind.dataType = C.SQLT_BIN
 					sbind.pbuf = unsafe.Pointer(cByte(value))
@@ -218,27 +181,8 @@ func (stmt *Stmt) bindValues(values []driver.Value, namedValues []driver.NamedVa
 			if isOut {
 
 				if len(value) > 32767 {
-					var lobP *unsafe.Pointer
-					lobP, _, err = stmt.conn.ociDescriptorAlloc(C.OCI_DTYPE_LOB, 0)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					sbind.dataType = C.SQLT_CLOB
-					sbind.pbuf = unsafe.Pointer(lobP)
-					sbind.maxSize = C.sb4(sizeOfNilPointer)
-					*sbind.length = C.ub2(sizeOfNilPointer)
-					lobLocator := (**C.OCILobLocator)(sbind.pbuf)
-					err = stmt.conn.ociLobCreateTemporary(*lobLocator, C.SQLCS_IMPLICIT, C.OCI_TEMP_CLOB)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					err = stmt.conn.ociLobWrite(*lobLocator, C.SQLCS_IMPLICIT, []byte(value))
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
+					freeBinds(binds)
+					return nil, errors.New("not suppot Lob")
 				} else {
 					sbind.dataType = C.SQLT_CHR
 					sbind.pbuf = unsafe.Pointer(cStringN(value, 32768))
@@ -253,27 +197,8 @@ func (stmt *Stmt) bindValues(values []driver.Value, namedValues []driver.NamedVa
 			} else {
 
 				if len(value) > 32767 {
-					var lobP *unsafe.Pointer
-					lobP, _, err = stmt.conn.ociDescriptorAlloc(C.OCI_DTYPE_LOB, 0)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					sbind.dataType = C.SQLT_CLOB
-					sbind.pbuf = unsafe.Pointer(lobP)
-					sbind.maxSize = C.sb4(sizeOfNilPointer)
-					*sbind.length = C.ub2(sizeOfNilPointer)
-					lobLocator := (**C.OCILobLocator)(sbind.pbuf)
-					err = stmt.conn.ociLobCreateTemporary(*lobLocator, C.SQLCS_IMPLICIT, C.OCI_TEMP_CLOB)
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
-					err = stmt.conn.ociLobWrite(*lobLocator, C.SQLCS_IMPLICIT, []byte(value))
-					if err != nil {
-						freeBinds(binds)
-						return nil, err
-					}
+					freeBinds(binds)
+					return nil, errors.New("not suppot Lob")
 				} else {
 					sbind.dataType = C.SQLT_AFC
 					sbind.pbuf = unsafe.Pointer(C.CString(value))
@@ -780,13 +705,7 @@ func (stmt *Stmt) outputBoundParameters(binds []bindStruct) error {
 					*dest = C.GoStringN((*C.char)(bind.pbuf), C.int(*bind.length)) + strings.Repeat(" ", spaces)
 				case *bind.indicator == 0: // Normal
 					if bind.dataType == C.SQLT_CLOB {
-						lobLocator := (**C.OCILobLocator)(bind.pbuf)
-						var buffer []byte
-						buffer, err = stmt.conn.ociLobRead(*lobLocator, C.SQLCS_IMPLICIT)
-						if err != nil {
-							return err
-						}
-						*dest = string(buffer)
+
 					} else {
 						*dest = C.GoStringN((*C.char)(bind.pbuf), C.int(*bind.length))
 					}
@@ -908,11 +827,7 @@ func (stmt *Stmt) outputBoundParameters(binds []bindStruct) error {
 					*dest = C.GoBytes(bind.pbuf, C.int(*bind.indicator))
 				case *bind.indicator == 0: // Normal
 					if bind.dataType == C.SQLT_BLOB {
-						lobLocator := (**C.OCILobLocator)(bind.pbuf)
-						*dest, err = stmt.conn.ociLobRead(*lobLocator, C.SQLCS_IMPLICIT)
-						if err != nil {
-							return err
-						}
+
 					} else {
 						*dest = C.GoBytes(bind.pbuf, C.int(*bind.length))
 					}

@@ -1,7 +1,7 @@
 package oboci
 
 /*
-#cgo !noPkgConfig pkg-config: oci8
+#cgo !noPkgConfig pkg-config: oboci
 #include "oboci.go.h"
 */
 import "C"

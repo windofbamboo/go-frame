@@ -1,6 +1,6 @@
 // +build go1.12
 
-package oci_test
+package oboci_test
 
 import (
 	"context"

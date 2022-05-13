@@ -133,11 +133,6 @@ func setupForTesting() int {
 	flag.BoolVar(&TestDisableDestructive, "disableDestructive", false, "set to true to disable the destructive Oracle tests")
 
 	flag.Parse()
-	
-	TestUsername = "cloudtest_accounting"
-	TestPassword = "cloudtest"
-	TestHostValid = "(DESCRIPTION = (ADDRESS_LIST =(ADDRESS = (PROTOCOL = TCP)(HOST = 172.32.148.119)(PORT = 1521))) (CONNECT_DATA =(SERVER = DEDICATED)(SERVICE_NAME = ngntdb1)))"
-	TestDisableDatabase = false
 
 	var err error
 	TestContextTimeout, err = time.ParseDuration(TestContextTimeoutString)
@@ -198,7 +193,7 @@ func TestParseDSN(t *testing.T) {
 		dsnString   string
 		expectedDSN *DSN
 	}{
-		{"oracle://xxmc:xxmc@107.20.30.169:1521/ORCL?loc=America%2FPhoenix", &DSN{Username: "xxmc", Password: "xxmc", Connect: "107.20.30.169:1521/ORCL", prefetchRows: prefetchRows, prefetchMemory: prefetchMemory, stmtCacheSize: stmtCacheSize, timeLocation: timeLocations[5]}},
+		{"oceanbase://xxmc:xxmc@107.20.30.169:1521/ORCL?loc=America%2FPhoenix", &DSN{Username: "xxmc", Password: "xxmc", Connect: "107.20.30.169:1521/ORCL", prefetchRows: prefetchRows, prefetchMemory: prefetchMemory, stmtCacheSize: stmtCacheSize, timeLocation: timeLocations[5]}},
 		{"xxmc/xxmc@107.20.30.169:1521/ORCL?loc=America%2FPhoenix", &DSN{Username: "xxmc", Password: "xxmc", Connect: "107.20.30.169:1521/ORCL", prefetchRows: prefetchRows, prefetchMemory: prefetchMemory, stmtCacheSize: stmtCacheSize, timeLocation: timeLocations[5]}},
 		{"sys/syspwd@107.20.30.169:1521/ORCL?loc=America%2FPhoenix&as=sysdba", &DSN{Username: "sys", Password: "syspwd", Connect: "107.20.30.169:1521/ORCL", prefetchRows: prefetchRows, prefetchMemory: prefetchMemory, stmtCacheSize: stmtCacheSize, timeLocation: timeLocations[5], operationMode: 0x00000002}}, // with operationMode: 0x00000002 = C.OCI_SYDBA
 		{"xxmc/xxmc@107.20.30.169:1521/ORCL", &DSN{Username: "xxmc", Password: "xxmc", Connect: "107.20.30.169:1521/ORCL", prefetchRows: prefetchRows, prefetchMemory: prefetchMemory, stmtCacheSize: stmtCacheSize, timeLocation: time.UTC}},

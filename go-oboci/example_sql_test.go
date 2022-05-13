@@ -1,4 +1,4 @@
-package oci_test
+package oboci_test
 
 import (
 	"bytes"

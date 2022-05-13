@@ -11,7 +11,6 @@ import (
 	"io"
 	"reflect"
 	"time"
-	"unsafe"
 )
 
 // Close closes rows
@@ -87,21 +86,6 @@ func (rows *Rows) Next(dest []driver.Value) error {
 				0,
 				rows.stmt.conn.timeLocation)
 
-		// SQLT_BLOB and SQLT_CLOB
-		case C.SQLT_BLOB, C.SQLT_CLOB:
-			lobLocator := (**C.OCILobLocator)(rows.defines[i].pbuf)
-			buffer, err := rows.stmt.conn.ociLobRead(*lobLocator, C.SQLCS_IMPLICIT)
-			if err != nil {
-				return err
-			}
-
-			// set dest to buffer
-			if rows.defines[i].dataType == C.SQLT_BLOB {
-				dest[i] = buffer
-			} else {
-				dest[i] = string(buffer)
-			}
-
 		// SQLT_CHR, SQLT_STR, SQLT_AFC, SQLT_AVC, and SQLT_LNG
 		case C.SQLT_CHR, C.SQLT_STR, C.SQLT_AFC, C.SQLT_AVC, C.SQLT_LNG:
 			dest[i] = C.GoStringN((*C.char)(rows.defines[i].pbuf), C.int(*rows.defines[i].length))
@@ -156,48 +140,6 @@ func (rows *Rows) Next(dest []driver.Value) error {
 				return fmt.Errorf("ociDateTimeToTime for column %v - error: %v", i, err)
 			}
 			dest[i] = *aTime
-
-		// SQLT_INTERVAL_DS
-		case C.SQLT_INTERVAL_DS:
-			var days C.sb4
-			var hours C.sb4
-			var minutes C.sb4
-			var seconds C.sb4
-			var fracSeconds C.sb4
-			interval := *(**C.OCIInterval)(rows.defines[i].pbuf)
-			result = C.OCIIntervalGetDaySecond(
-				unsafe.Pointer(rows.stmt.conn.env), // environment handle
-				rows.stmt.conn.errHandle,           // error handle
-				&days,                              // days
-				&hours,                             // hours
-				&minutes,                           // minutes
-				&seconds,                           // seconds
-				&fracSeconds,                       // fractional seconds
-				interval,                           // interval
-			)
-			if result != C.OCI_SUCCESS {
-				return rows.stmt.conn.getError(result)
-			}
-
-			dest[i] = (int64(days) * 24 * int64(time.Hour)) + (int64(hours) * int64(time.Hour)) +
-				(int64(minutes) * int64(time.Minute)) + (int64(seconds) * int64(time.Second)) + int64(fracSeconds)
-
-		// SQLT_INTERVAL_YM
-		case C.SQLT_INTERVAL_YM:
-			var years C.sb4
-			var months C.sb4
-			interval := *(**C.OCIInterval)(rows.defines[i].pbuf)
-			result = C.OCIIntervalGetYearMonth(
-				unsafe.Pointer(rows.stmt.conn.env), // environment handle
-				rows.stmt.conn.errHandle,           // error handle
-				&years,                             // year
-				&months,                            // month
-				interval,                           // interval
-			)
-			if result != C.OCI_SUCCESS {
-				return rows.stmt.conn.getError(result)
-			}
-			dest[i] = (int64(years) * 12) + int64(months)
 
 		// SQLT_RSET - ref cursor
 		case C.SQLT_RSET:
