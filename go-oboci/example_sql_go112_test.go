@@ -1,6 +1,6 @@
 // +build go1.12
 
-package oboci_test
+package oboci
 
 import (
 	"context"
